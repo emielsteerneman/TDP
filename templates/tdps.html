@@ -1,0 +1,96 @@
+<html>
+	<head>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+	</head>
+	<body>
+		<div class="pure-g">
+			<div class = "pure-u-1-12"></div>
+			<div class="pure-u-11-12">
+
+				<h1> TDPs overview </h1>
+				<div class="pure-u-1-4">
+					<h2><a href="/tdps"> All TDPs </a> </h2>
+				</div>
+
+				<div class="pure-u-1-4">
+					<h2><a href="/tdps?groupby=team"> By Team </a> </h2>
+				</div>
+
+				<div class="pure-u-1-4">
+					<h2><a href="/tdps?groupby=year"> By Year </a> </h2>
+				</div>
+
+				{% if groupby == "team" %}
+				<div class="pure-u-1-1">
+					<h1> Grouped by team </h1>
+					<!-- Render all tdps with Jinja -->
+					{% for team in data | dictsort %}
+						<div class="pure-u-1-4">
+							<b> {{ team[0] }} </b>
+							<br>
+							{% for tdp in team[1] %}
+								<a href="/tdps/{{ tdp['id'] }}">{{ tdp['year'] }}</a>, 
+							{% endfor %}
+							<br><br><br>
+						</div>
+					{% endfor %}
+				</div>
+				{% endif %}
+
+				{% if groupby == None %}
+				<div class="pure-u-1-1">
+					<!-- Render all tdps with Jinja -->
+					<table>
+						<thead> 
+							<tr>
+								<th>Filename</th>
+								<th>Team</th>
+								<th>Year</th>
+								<th>Is ETDP?</th>
+							</tr>
+						</thead>
+					{% for tdp in data %}
+						
+						<tr>
+							<td><a href="/tdps/{{ tdp['id'] }}"> {{ tdp.filename }} </a></td>
+							<td>{{ tdp.team }}</td>
+							<td>{{ tdp.year }}</td>
+							<td>{{ tdp.is_etdp }}</td>
+						</tr>
+					{% endfor %}
+					</table>
+				</div>
+				{% endif %}
+
+				<div class="pure-u-2-4">
+					<form action="tdps" method="post" class="pure-form pure-form-aligned">
+						<fieldset>
+							<div class="pure-control-group">
+								<label for="filename">Filename</label>
+								<input type="text" name="filename" placeholder="Filename">
+							</div>
+							<div class="pure-control-group">
+								<label for="team">Team</label>
+								<input type="text" name="team" placeholder="Team">
+							</div>
+							<div class="pure-control-group">
+								<label for="year">Year</label>
+								<input type="text" name="year" placeholder="Enter your year">
+							</div>
+							<div class="pure-control-group">
+								<label for="is_etdp">Is this an ETDP?</label>
+								<input type="checkbox" name="is_etdp">
+							</div>
+							<div class="pure-control-group">
+								<label></label>
+								<button type="submit" class="pure-button pure-button-primary">Submit</button>
+							</div>
+						</fieldset>
+					</form>
+				</div>
+				<div class="pure-u-1-4"></div>
+			</div>
+		</div>
+
+	</body>
+</html>

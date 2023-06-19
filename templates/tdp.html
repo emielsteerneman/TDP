@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <title>{{ tdp['year'] }} - {{ tdp['team'] }}</title>
+  </head>
+  <body>
+    <div class="pure-g">
+        <div class="pure-u-1-1">
+            <center><h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1></center>
+        </div>
+        
+        <div class="pure-u-11-24">
+            
+            <object data="{{filepath}}" type="application/pdf" width="100%" height="800px">   
+            <p>Unable to display PDF file. <a href="{{filepath}}">Download</a> instead.</p>
+            <p> Are you on Firefox? Go to <<code>>about:config</code> and set <code>browser.download.open_pdf_attachments_inline</code> to <code>true</code>.</p> 
+            </object>
+        </div>
+        <div class="pure-u-1-24"></div>
+        <div class="pure-u-1-24"></div>
+
+        <div class="pure-u-11-24">
+            <form action="/tdps/{{ tdp['id'] }}" method="post" id="form_" >
+                <input type="text" name="textbox"/>
+                <input type="submit" value="Submit">
+            </form>
+
+            <textarea rows="40" cols="80" form="form_" name="textfield">
+                {{ tdp['notes'] }}
+            </textarea>
+        </div>
+
+    </div>
+    
+
+  </body>
+</html>
