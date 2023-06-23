@@ -17,10 +17,11 @@ def find_all_TDPs():
                 tdps.append(os.path.join(root, file))
     return tdps
 
-tdps = find_all_TDPs()
+tdps = find_all_TDPs()[:20]
 # tdps = [ _ for _ in tdps if "roboteam" in _.lower() ]
 
 # tdps = ["./TDPs/2014/2014_ETDP_CMDragons.pdf"]
+# tdps = ["./TDPs/2011/2011_TDP_TIGERs_Mannheim.pdf"]
 
 def is_semver(version):
     """Check if a string is in the form of 'v1.2.3'"""
@@ -95,15 +96,9 @@ for tdp in tdps:
 
         print(has_pagenumbers_top, has_pagenumbers_bottom, tdp)
 
-        # if not has_pagenumbers_top: continue
-        # for page in pages:
-        #     print()
-        #     for line in page[:3]:
-        #         print(line)
-        # continue
-
         semver_current = Semver()
         paragraphs = []
+        abstract_found = False
 
         # if not has_pagenumbers_top and not has_pagenumbers_bottom:
         #     continue
@@ -123,6 +118,11 @@ for tdp in tdps:
             for i_sentence, sentence in enumerate(sentences):
                 if not len(sentence): continue
                 
+                if not abstract_found:
+                    if "abstract" in sentence.lower():
+                        abstract_found = True
+                    continue
+
                 words = sentence.strip().split(" ")
                 
                 if i_sentence == 0 and has_pagenumbers_top:
