@@ -97,8 +97,11 @@ for tdp in tdps:
         print(has_pagenumbers_top, has_pagenumbers_bottom, tdp)
 
         semver_current = Semver()
+        paragraph_titles = []
         paragraphs = []
+        current_paragraph = []
         abstract_found = False
+        skipNext = False
 
         # if not has_pagenumbers_top and not has_pagenumbers_bottom:
         #     continue
@@ -115,27 +118,36 @@ for tdp in tdps:
             # Find all sentences that start with a number
             sentences = text.splitlines()
 
+            # For each sentence
             for i_sentence, sentence in enumerate(sentences):
+                # Skip empty sentences
                 if not len(sentence): continue
+
+                # Skip next if needed
+                if skipNext:
+                    skipNext = False
+                    continue
                 
+                # Skip everything before the abstract. This prevents stuff like "1 Department of ..." from being parsed as a paragraph
+                # Example where it goes wrong: 2011_TDP_TIGERs_Mannheim.pdf
                 if not abstract_found:
                     if "abstract" in sentence.lower():
                         abstract_found = True
                     continue
-
+                
+                # If the page has page numbers, skip the first and last sentence
+                if i_sentence == 0 and has_pagenumbers_top:
+                    continue
+                if i_sentence == len(sentences)-1 and has_pagenumbers_bottom:
+                    continue
+                
+                # Split the sentence into words
                 words = sentence.strip().split(" ")
                 
-                if i_sentence == 0 and has_pagenumbers_top:
-                    # print(f"Skipping    top pagenumber line |{sentence}|")
-                    continue
-
-                if i_sentence == len(sentences)-1 and has_pagenumbers_bottom:
-                    # print(f"Skipping bottom pagenumber line |{sentence}|")
-                    continue
-
+                # Skip empty sentences
                 if not len(words): continue
-                # if not words[0].isdigit(): continue
 
+                # If the first word is a semver, and the last word is a word, then it is a paragraph
                 issemver = is_semver(words[0])
                 last_is_word = len(words) == 1 or words[-1].isalpha()
 
@@ -150,21 +162,33 @@ for tdp in tdps:
                         semver_current = semver_next
 
                         if len(words) == 1:
-                            paragraphs.append( F"{semver_current} " + sentences[i_sentence+1] )
+                            paragraph_titles.append( F"{semver_current} " + sentences[i_sentence+1] )
+                            skipNext = True
                         else:
-                            paragraphs.append( F"{semver_current} " + " ".join(words[1:]) )
+                            paragraph_titles.append( F"{semver_current} " + " ".join(words[1:]) )
+
+                        if len(current_paragraph):
+                            paragraphs.append(current_paragraph)
+                            current_paragraph = []
+                else:
+                    current_paragraph.append(sentence)
 
                 # else:
                     # print(f" NO {issemver} {last_is_word} ({words[0]}) |{sentence}|")
                 # print(sentence)
 
-        for paragraph in paragraphs:
-            print(paragraph)
-        print("\n\n\n"*2)
 
-        continue
+        # for paragraph in paragraphs:
+        #     print(paragraph)
+        # print("\n\n\n"*2)
 
-        """
+
+        for paragraph_title, paragraph in zip(paragraph_titles, paragraphs):
+            print("\n============================")
+            print(paragraph_title)
+            # print("\n".join(paragraph))
+            text = "\n".join(paragraph)
+
             text = text.replace("-\n", "")
             text = text.replace("\n", " ")
 
@@ -195,12 +219,14 @@ for tdp in tdps:
 
             sentences_all += sentences
 
+            for sentence in sentences:
+                print("!!!", sentence)
+
             # Write everything to file
             for sentence in sentences:
-                output_file.write(sentence + "\n")
+                # output_file.write(sentence + "\n")
                 n_sentences += 1
                 total_characters += len(sentence)
-        """
 
 print(f"Total sentences: {n_sentences}")
 print(f"Total characters: {total_characters}")
