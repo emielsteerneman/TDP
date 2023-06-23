@@ -25,11 +25,28 @@
 					<h1> Grouped by team </h1>
 					<!-- Render all tdps with Jinja -->
 					{% for team in data | dictsort %}
-						<div class="pure-u-1-4">
+						<div class="pure-u-1-5">
 							<b> {{ team[0] }} </b>
 							<br>
 							{% for tdp in team[1] %}
-								<a href="/tdps/{{ tdp['id'] }}">{{ tdp['year'] }}</a>, 
+							<div style="display: inline-block; padding: 5px;"><a href="/tdps/{{ tdp['id'] }}">{{ tdp['year'] }}</a></div>
+							{% endfor %}
+							<br><br><br>
+						</div>
+					{% endfor %}
+				</div>
+				{% endif %}
+
+				{% if groupby == "year" %}
+				<div class="pure-u-1-1">
+					<h1> Grouped by year </h1>
+					<!-- Render all tdps with Jinja -->
+					{% for year in data | dictsort | reverse %}
+						<div class="pure-u-11-12">
+							<b> {{ year[0] }} </b>
+							<br>
+							{% for tdp in year[1] %}
+								<div style="display: inline-block; padding: 10px;"><a href="/tdps/{{ tdp['id'] }}">{{ tdp['team'] }}</a></div> 
 							{% endfor %}
 							<br><br><br>
 						</div>

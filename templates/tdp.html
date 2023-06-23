@@ -1,38 +1,162 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous"> -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.js" integrity="sha512-RjvSEaeDqPCfUVQ9kna2/2OqHz/7F04IOl1/66LmQjB/lOeAzwq7LrbTzDbz5cJzlPNJ5qteNtHR56XaJSTNWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <title>{{ tdp['year'] }} - {{ tdp['team'] }}</title>
   </head>
   <body>
-    <div class="pure-g">
-        <div class="pure-u-1-1">
-            <center><h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1></center>
+    <div id="app" class="container-fluid">
+
+      <div class="row">
+        <div class="col-md-3">
+          <center><h1><a href="/tdps"> All TDPs </a></h1></center>
+        </div>  
+        <div class="col-md-6">
+          <center><h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1></center>
         </div>
-        
-        <div class="pure-u-11-24">
-            
+        <div class="col-md-3"> &nbsp;
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="row">
+        <!-- PDF Viewer -->
+        <div class="col-md-6">
             <object data="{{filepath}}" type="application/pdf" width="100%" height="800px">   
             <p>Unable to display PDF file. <a href="{{filepath}}">Download</a> instead.</p>
-            <p> Are you on Firefox? Go to <<code>>about:config</code> and set <code>browser.download.open_pdf_attachments_inline</code> to <code>true</code>.</p> 
+            <p> Are you on Firefox? Go to <code>about:config</code> and set <code>browser.download.open_pdf_attachments_inline</code> to <code>true</code>.</p> 
             </object>
         </div>
-        <div class="pure-u-1-24"></div>
-        <div class="pure-u-1-24"></div>
 
-        <div class="pure-u-11-24">
-            <form action="/tdps/{{ tdp['id'] }}" method="post" id="form_" >
-                <input type="text" name="textbox"/>
-                <input type="submit" value="Submit">
-            </form>
+        <!-- Paragraphs -->
+        <div class="col-md-6">
+            
+          <!-- For each paragraph -->
+          {% raw %}
+          <div style="overflow-y: scroll; height: 600px; padding-right: 10px;">
+          <div v-for="paragraph in paragraphs" :key="paragraph" class="row">
+              <div class="col-md-8">
+                <h4> {{ paragraph['id'] }} : {{ paragraph['title'] }} </h4>
+              </div>
+              <div class="col-md-2">
+                <button class="form-control btn btn-primary" v-on:click="onEdit(paragraph)">Edit</button>
+              </div>
+              <div class="col-md-2">
+                <button class="form-control btn btn-danger" v-on:click="onDelete(paragraph)">Delete</button>
+              </div>
+              <p style="font-size: 12px;"> {{ paragraph['text'] }} </p>
+          </div>
+          </div>
+          
+          <!-- Active paragraph -->
+          <div class="row">
+              <div class="col-md-4">
+                <input type="text" name="title" class="form-control" v-model="active_paragraph.title" placeholder="Paragraph title">
+              </div>
+              <div class="col-md-1">
+                <input type="text" name="title" class="form-control" v-model="active_paragraph.id" placeholder="Paragraph title" disabled>
+              </div>
+              <div class="col-md-2">
+                <button class="form-control btn btn-success" v-on:click="onSubmit">Save</button>
+              </div>
+              <div class="col-md-2">
+                <button class="form-control btn btn-warning" v-on:click="onClear">Clear</button>
+              </div>
+          </div>
+          <br>
+          <div class="row">
+              <div class="col-md-12">
+                <textarea rows="8" name="textfield" class="form-control" @paste="onTextfieldChange" @change="onTextfieldChange" v-model="active_paragraph.text"></textarea>
+              </div>
+          </div>
+          {% endraw %}
 
-            <textarea rows="40" cols="80" form="form_" name="textfield">
-                {{ tdp['notes'] }}
-            </textarea>
-        </div>
+        </div> <!-- Active paragraph -->
 
-    </div>
+      </div> <!-- Main row -->
+    </div> <!-- Container -->
     
+    <script>
+      TDP_ID = {{ tdp['id'] }}
+    </script>
+    {% raw %}
+    <script>
+
+    function submitParagraph(id, title, text, callback) {
+      console.log("submitting paragraph", id, title)
+      axios.post("/api/tdps/" + id + "/paragraphs", {
+        id: id,
+        tdp_id: TDP_ID,
+        title: title,
+        text: text,
+      }).then(callback)
+    }
+
+    function deleteParagraph(id, callback) {
+      console.log("deleting paragraph", id)
+      axios.delete("/api/tdps/" + TDP_ID + "/paragraphs/" + id)
+        .then(callback)
+    }
+
+    var app = new Vue({
+        el: '#app',
+        data: {
+            message: 'You loaded this page on ' + new Date().toLocaleString(),
+            paragraphs: [],
+            active_paragraph: {
+                id: -1,
+                title: "",
+                text: "",
+            },
+        },
+        methods: {
+          onSubmit: function(){ submitParagraph(
+            this.active_paragraph.id,
+            this.active_paragraph.title,
+            this.active_paragraph.text,
+            response => {
+              this.paragraphs = response.data
+              this.onClear()
+            }
+          )},
+          onEdit: function(paragraph) {
+            console.log("editing", paragraph)
+            this.active_paragraph = JSON.parse(JSON.stringify(paragraph));
+          },
+          onDelete: function(paragraph) {
+            console.log("deleting", paragraph)
+            deleteParagraph(paragraph.id, response => {
+              this.paragraphs = response.data
+            })
+          },
+          onClear: function() {
+            this.active_paragraph = {
+                id: -1,
+                title: "",
+                text: "",
+            }
+          },
+
+
+          onTextfieldChange: function() {
+            console.log(event)
+            this.active_paragraph.text = this.active_paragraph.text.replace(/[^a-zA-Z0-9 \.,]/g, ' ');
+          }
+        },
+        mounted: function() {
+          axios.get("/api/tdps/" + TDP_ID + "/paragraphs")
+            .then(response => {
+              console.log(response.data)
+              this.paragraphs = response.data
+            })
+        }
+    })
+    </script>
+    {% endraw %}
 
   </body>
 </html>
