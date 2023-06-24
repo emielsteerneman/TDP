@@ -1,0 +1,5 @@
+numpy
+PyMuPDF
+rank_bm25
+matplotlib
+sentence-transformers
