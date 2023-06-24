@@ -40,7 +40,7 @@
           <div style="overflow-y: scroll; height: 600px; padding-right: 10px;">
           <div v-for="paragraph in paragraphs" :key="paragraph" class="row">
               <div class="col-md-8">
-                <h4> {{ paragraph['id'] }} : {{ paragraph['title'] }} </h4>
+                <h4> {{ paragraph['title'] }} </h4>
               </div>
               <div class="col-md-2">
                 <button class="form-control btn btn-primary" v-on:click="onEdit(paragraph)">Edit</button>

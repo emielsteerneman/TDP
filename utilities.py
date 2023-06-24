@@ -1,7 +1,6 @@
 import os
-import utilities as U
 from Database import instance as db_instance
-from embeddings import Embeddor as E
+# from embeddings import Embeddor as E
 
 def find_all_TDPs():
     """Find all TDP pdf files in all subdirectories of current directory"""
@@ -28,7 +27,7 @@ def find_all_tdps_and_add_to_database(db):
     tdps = find_all_TDPs()
     parsed = [parse_tdp_name(tdp) for tdp in tdps]    
     for tdp in parsed:
-        db.add_tdp(tdp['filename'], tdp['team'], tdp['year'], tdp['is_etdp'])
+        db.post_tdp(tdp['filename'], tdp['team'], tdp['year'], tdp['is_etdp'])
     
 def paragraph_to_sentences_embeddings(paragraph):
     sentences = paragraph.split('.')

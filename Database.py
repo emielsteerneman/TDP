@@ -87,7 +87,7 @@ class Database:
 		self.conn.commit()
 		print("[DB] Table created")
   
-	### TDPs ###
+	""" TDPs """
   
 	def get_tdps(self):
 		return self.conn.execute('''
@@ -99,7 +99,19 @@ class Database:
 			SELECT * FROM tdps WHERE id = ?
 		''', (tdp_id,)).fetchone()
 
+	def post_tdp(self, filename, team, year, is_etdp):
+		print(f"[DB] TDP added: {year} {team}")
+		cursor = self.conn.cursor()
+		cursor.execute('''
+			INSERT INTO tdps (filename, team, year, is_etdp)
+			VALUES (?, ?, ?, ?)
+		''', (filename, team, year, is_etdp))
+		self.conn.commit()
+		# print(f"[DB] TDP added: {year} {team}")
+		return cursor.lastrowid
+ 
 	""" Paragraphs """
+ 
 	def get_paragraph(self, paragraph_id):
 		return self.conn.execute('''SELECT * FROM paragraphs WHERE id = ?''', (paragraph_id,)).fetchone()
 
@@ -110,21 +122,23 @@ class Database:
 			return self.conn.execute('''SELECT * FROM paragraphs WHERE tdp_id = ?''', (tdp_id,)).fetchall()
 
 	def post_paragraph(self, id, tdp_id, title, text):
+		cursor = self.conn.cursor()
 		if id == -1:
-			self.conn.execute('''
+			cursor.execute('''
 				INSERT INTO paragraphs (tdp_id, title, text)
 				VALUES (?, ?, ?)
 			''', (tdp_id, title, text))
 			self.conn.commit()
 			print(f"[DB] Paragraph added to TDP {tdp_id}")
 		else:
-			self.conn.execute('''
+			cursor.execute('''
 				UPDATE paragraphs
 				SET title = ?, text = ?
 				WHERE id = ?
 			''', (title, text, id))
 			self.conn.commit()
 			print(f"[DB] Paragraph {id} updated")
+		return cursor.lastrowid
 
 	def delete_paragraph(self, id):
 		self.conn.execute('''
@@ -158,13 +172,5 @@ class Database:
 		self.conn.commit()
 		print(f"[DB] {len(sentences)} sentences added to paragraph {paragraph_id}")
 
-	def add_tdp(self, filename, team, year, is_etdp):
-		print(f"[DB] TDP added: {year} {team}")
-		self.conn.execute('''
-			INSERT INTO tdps (filename, team, year, is_etdp)
-			VALUES (?, ?, ?, ?)
-		''', (filename, team, year, is_etdp))
-		self.conn.commit()
-		# print(f"[DB] TDP added: {year} {team}")
 
 instance = Database()
