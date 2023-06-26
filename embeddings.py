@@ -28,6 +28,8 @@ class Embeddings:
 
         # Embed sentence
         distances = [ [self.cosine_similarity(sentence_embedding, _['embedding']), _] for _ in self.dbsentences ]
+        return distances
+        
         # Sort by distance
         distances.sort(key=lambda _: _[0], reverse=True)
         # Add distance and remove embedding

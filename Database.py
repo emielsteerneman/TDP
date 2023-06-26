@@ -100,7 +100,7 @@ class Database:
 		''', (tdp_id,)).fetchone()
 
 	def post_tdp(self, filename, team, year, is_etdp):
-		print(f"[DB] TDP added: {year} {team}")
+		# print(f"[DB] TDP added: {year} {team}")
 		cursor = self.conn.cursor()
 		cursor.execute('''
 			INSERT INTO tdps (filename, team, year, is_etdp)
@@ -129,7 +129,7 @@ class Database:
 				VALUES (?, ?, ?)
 			''', (tdp_id, title, text))
 			self.conn.commit()
-			print(f"[DB] Paragraph added to TDP {tdp_id}")
+			# print(f"[DB] Paragraph added to TDP {tdp_id}")
 		else:
 			cursor.execute('''
 				UPDATE paragraphs
@@ -150,15 +150,23 @@ class Database:
 
 	""" Sentences """
 
-	def get_sentences(self, paragraph_id=None):
-		if paragraph_id is None:
+	def get_sentences(self, paragraph_id=None, inclusive=False):
+		# For each sentence, also include team and year through paragraph_id -> tdp_id
+		if inclusive:
 			return self.conn.execute('''
-				SELECT * FROM sentences
+				SELECT sentences.*, tdps.team, tdps.year FROM sentences
+				INNER JOIN paragraphs ON sentences.paragraph_id = paragraphs.id
+				INNER JOIN tdps ON paragraphs.tdp_id = tdps.id
 			''').fetchall()
 		else:
-			return self.conn.execute('''
-				SELECT * FROM sentences WHERE paragraph_id = ?
-			''', (paragraph_id,)).fetchall()
+			if paragraph_id is None:
+				return self.conn.execute('''
+					SELECT * FROM sentences
+				''').fetchall()
+			else:
+				return self.conn.execute('''
+					SELECT * FROM sentences WHERE paragraph_id = ?
+				''', (paragraph_id,)).fetchall()
 
 	def post_sentences(self, paragraph_id, sentences, embeddings):
 		# First, remove all sentences from this paragraph
@@ -170,7 +178,7 @@ class Database:
 				VALUES (?, ?, ?)
 			''', (paragraph_id, sentence, embedding))
 		self.conn.commit()
-		print(f"[DB] {len(sentences)} sentences added to paragraph {paragraph_id}")
+		# print(f"[DB] {len(sentences)} sentences added to paragraph {paragraph_id}")
 
 
 instance = Database()
