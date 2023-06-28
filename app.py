@@ -1,5 +1,6 @@
 # save this as app.py
 from flask import Flask, render_template, request, send_from_directory
+import Database
 from Database import instance as db_instance
 import utilities as U
 from embeddings import Embeddor as E
@@ -47,7 +48,8 @@ def hello():
 
 @app.get("/tdps/<id>")
 def get_tdps_id(id):
-    tdp = dict(db_instance.get_tdp(id))
+    tdp_db = Database.TDP_db(id=id)
+    tdp = db_instance.get_tdp_by_id(tdp_db)
     filepath = f"/TDPs/{tdp['year']}/{tdp['filename']}"
     return render_template('tdp.html', tdp=tdp, filepath=filepath)
 
@@ -64,21 +66,25 @@ def get_api_tdps():
 
 @app.get("/api/tdps/<tdp_id>/paragraphs")
 def get_api_tdps_id_paragraphs(tdp_id):
-    return db_instance.get_paragraphs(tdp_id)
+    paragraphs = db_instance.get_paragraphs(Database.TDP_db(id=tdp_id))
+    return [ paragraph.to_dict() for paragraph in paragraphs ]
 @app.post("/api/tdps/<tdp_id>/paragraphs")
 def post_api_tdps_id_paragraphs(tdp_id):
     body = request.get_json()
-    paragraph_id, tdp_id, title, text = body['id'], body['tdp_id'], body['title'], body['text']
-    db_instance.post_paragraph(paragraph_id, tdp_id, title, text)
+    db_instance.post_paragraph(Database.Paragraph_db.from_dict(body))
 
-    sentences, embeddings = U.paragraph_to_sentences_embeddings(text)
-    db_instance.post_sentences(paragraph_id, sentences, embeddings)
+    # sentences, embeddings = U.paragraph_to_sentences_embeddings(text)
+    # db_instance.post_sentences(paragraph_id, sentences, embeddings)
 
-    return db_instance.get_paragraphs(tdp_id)
+    paragraphs = db_instance.get_paragraphs(tdp_id)
+    return [ paragraph.to_dict() for paragraph in paragraphs ]
+
 @app.delete("/api/tdps/<tdp_id>/paragraphs/<paragraph_id>")
 def delete_api_tdps_id_paragraphs(tdp_id, paragraph_id):
-    db_instance.delete_paragraph(paragraph_id)
-    return db_instance.get_paragraphs(tdp_id)
+    paragraph_db = Database.Paragraph_db(id=paragraph_id)
+    db_instance.delete_paragraph(paragraph_db)
+    paragraphs = db_instance.get_paragraphs(tdp_id)
+    return [ paragraph.to_dict() for paragraph in paragraphs ]
 
 """ /api/query """
 
