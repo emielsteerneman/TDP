@@ -1,4 +1,5 @@
 import os
+import Database
 from Database import instance as db_instance
 # from embeddings import Embeddor as E
 
@@ -16,18 +17,18 @@ def parse_tdp_name(filepath):
     """Parse TDP file name and return a dictionary with the fields"""
     filename = os.path.basename(filepath)
     fields = filename.split('.')[0].split('_')
-    return {
-        'filename': filename,
-        'year': fields[0],
-        'is_etdp': fields[1].lower() == 'etdp',
-        'team': " ".join(fields[2:])
-    }
+    return Database.TDP_db (
+        filename = filename,
+        year = fields[0],
+        is_etdp = fields[1].lower() == 'etdp',
+        team = " ".join(fields[2:])
+    )
 
 def find_all_tdps_and_add_to_database(db):
     tdps = find_all_TDPs()
     parsed = [parse_tdp_name(tdp) for tdp in tdps]    
     for tdp in parsed:
-        db.post_tdp(tdp['filename'], tdp['team'], tdp['year'], tdp['is_etdp'])
+        db.post_tdp(tdp)
     
 def paragraph_to_sentences_embeddings(paragraph):
     sentences = paragraph.split('.')

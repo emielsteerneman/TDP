@@ -57,6 +57,9 @@ class TDP_db:
 			year=tdp["year"],
 			is_etdp=tdp["is_etdp"]
 		)
+  
+	def __str__(self):
+		return f"TDP_db(id={self.id}, filename={self.filename}, team={self.team}, year={self.year}, is_etdp={self.is_etdp})"
 
 class Paragraph_db:
 	""" Class that represents a paragraph in the database """
@@ -94,6 +97,9 @@ class Paragraph_db:
 			text=paragraph["text"],
 			text_raw=paragraph["text_raw"]
 		)
+  
+	def __str__(self) -> str:
+		return f"Paragraph_db(id={self.id}, tdp_id={self.tdp_id}, title={self.title})"
 
 class Sentence_db:
 	""" Class that represents a sentence in the database """
@@ -128,7 +134,10 @@ class Sentence_db:
 			embedding=sentence["embedding"]
 		)
 
-
+	def __str__(self) -> str:
+		sentence_short = self.sentence[:10] + " ... " + self.sentence[-10:] if len(self.sentence) > 25 else self.sentence
+		return f"Sentence_db(id={self.id}, paragraph_id={self.paragraph_id}, sentence={sentence_short})"	
+  	
 class Database:
 
 	def __init__(self):
@@ -164,7 +173,6 @@ class Database:
 			   FOREIGN KEY (tdp_id) REFERENCES tdps (id)
 			)
 		''')
-
 		# Create tables holding sentences. Each sentence belongs to a paragraph. Each sentence has an embedding.
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS sentences (
@@ -198,8 +206,16 @@ class Database:
 		print("[DB] Table created")
   
 	""" TDPs """
+
+	def get_tdp_by_rowid(self, rowid:int):
+		tdp = self.conn.execute('''SELECT * FROM tdps WHERE rowid = ?''', (rowid,)).fetchone()
+		return TDP_db.from_dict(tdp)
+
+	def get_tdp_by_id(self, tdp_id:int):
+		tdp = self.conn.execute('''SELECT * FROM tdps WHERE id = ?''', (tdp_id,)).fetchone()
+		return TDP_db.from_dict(tdp)
   
-	def get_tdp_by_id(self, tdp_db:TDP_db):
+	def get_tdp(self, tdp_db:TDP_db):
 		tdp = self.conn.execute('''SELECT * FROM tdps WHERE id = ?''', (tdp_db.id,)).fetchone()
 		return TDP_db.from_dict(tdp)
 
@@ -208,33 +224,54 @@ class Database:
 		return [TDP_db.from_dict(tdp) for tdp in tdps]
   
 	def post_tdp(self, tdp_db:TDP_db):
+		""" Insert or update a TDP in the database
+
+		Args:
+			tdp_db (TDP_db): Instance of the TDP to insert or update. If tdp_db.id is None, insert a new tdp. Otherwise, update the tdp with the same id.
+
+		Raises:
+			e: sqlite3.IntegrityError if any constraint except UNIQUE is violated
+
+		Returns:
+			TDP_db: Instance of the inserted or updated TDP
+		"""
+  
 		cursor = self.conn.cursor()
 		
 		# Insert new tdp if id is None
 		if tdp_db.id is None:
-			# Check if all the required fields are not None
-			if tdp_db.filename is None or tdp_db.team is None or tdp_db.year is None or tdp_db.is_etdp is None:
-				raise Exception("[DB][post_tdp] Missing fields")
-			# Execute insert query
-			cursor.execute('''INSERT INTO tdps (filename, team, year, is_etdp) VALUES (?, ?, ?, ?)''', 
-				(tdp_db.filename, tdp_db.team, tdp_db.year, tdp_db.is_etdp))
-			self.conn.commit()
+			# Execute insert query. If UNIQUE constraint is violated, return the existing entry. Otherwise, raise exception.
+			try:
+				cursor.execute('''INSERT INTO tdps (filename, team, year, is_etdp) VALUES (?, ?, ?, ?)''', 
+					(tdp_db.filename, tdp_db.team, tdp_db.year, tdp_db.is_etdp))
+				self.conn.commit()
+			except sqlite3.IntegrityError as e:
+				if "UNIQUE constraint failed" in str(e):
+					print(f"[DB] TDP already exists: {tdp_db}")
+					# Entry already exists. Return the existing entry
+					tdp = self.conn.execute('''SELECT * FROM tdps WHERE team = ? AND year = ? AND is_etdp = ?''', 
+						(tdp_db.team, tdp_db.year, tdp_db.is_etdp)).fetchone()
+					return TDP_db.from_dict(tdp)
+				else:
+					print(f"[DB] IntegrityError: {e}")
+					raise e
+				
 		# Update tdp if id is not None
 		else:
 			# First get the tdp from the database
-			tdp_db_old = self.get_tdp_by_id(tdp_db)
+			tdp_db_old = self.get_tdp(tdp_db)
 			# Then merge the old tdp with the new tdp
 			tdp_db.merge(tdp_db_old)
 			# Execute update query
-			cursor.execute('''
-				UPDATE tdps
-				SET filename = ?, team = ?, year = ?, is_etdp = ?
-				WHERE id = ?
-			''', (tdp_db.filename, tdp_db.team, tdp_db.year, tdp_db.is_etdp, tdp_db.id))
+			cursor.execute('''UPDATE tdps SET filename = ?, team = ?, year = ?, is_etdp = ? WHERE id = ?''', 
+				(tdp_db.filename, tdp_db.team, tdp_db.year, tdp_db.is_etdp, tdp_db.id))
 			self.conn.commit()
 
-		return cursor.lastrowid
- 
+		print(f"[DB] TDP {tdp_db} saved")
+		
+		# Return an instance of the inserted or updated tdp
+		return self.get_tdp_by_rowid(cursor.lastrowid)
+	
 	def delete_tdp(self, tdp_db:TDP_db):
 		# Check if tdp_id is not None
 		if tdp_db.id is None:
@@ -246,46 +283,62 @@ class Database:
 
 	""" Paragraphs """
  
-	def get_paragraph_by_id(self, paragraph_db:Paragraph_db):
-		paragraph = self.conn.execute('''SELECT * FROM paragraphs WHERE id = ?''', (paragraph_db.id,)).fetchone()
+	def get_paragraph_by_rowid(self, rowid:int):
+		paragraph = self.conn.execute('''SELECT * FROM paragraphs WHERE rowid = ?''', (rowid,)).fetchone()
 		return Paragraph_db.from_dict(paragraph)
+ 
+	def get_paragraph_by_id(self, paragraph_id:int):
+		paragraph = self.conn.execute('''SELECT * FROM paragraphs WHERE id = ?''', (paragraph_id,)).fetchone()
+		return Paragraph_db.from_dict(paragraph)
+ 
+	def get_paragraph(self, paragraph_db:Paragraph_db):
+		return self.get_paragraph_by_id(paragraph_db.id)
 
-	def get_paragraphs(self, tdp_id=None):
-		if tdp_id is None:
-			paragraphs = self.conn.execute('''SELECT * FROM paragraphs''').fetchall()
-			return [Paragraph_db.from_dict(paragraph) for paragraph in paragraphs]
-		else:
-			paragraphs = self.conn.execute('''SELECT * FROM paragraphs WHERE tdp_id = ?''', (tdp_id,)).fetchall()
-			return [Paragraph_db.from_dict(paragraph) for paragraph in paragraphs]
+	def get_paragraphs(self):
+		paragraphs = self.conn.execute('''SELECT * FROM paragraphs''').fetchall()
+		return [Paragraph_db.from_dict(paragraph) for paragraph in paragraphs]
+
+	def get_paragraphs_by_tdp(self, tdp_db:TDP_db):
+		paragraphs = self.conn.execute('''SELECT * FROM paragraphs WHERE tdp_id = ?''', (tdp_db.id,)).fetchall()
+		return [Paragraph_db.from_dict(paragraph) for paragraph in paragraphs]
 
 	def post_paragraph(self, paragraph_db:Paragraph_db):
 		cursor = self.conn.cursor()
 
 		# Insert new paragraph if id is None
 		if paragraph_db.id is None:
-			# Check if all the required fields are not None
-			if paragraph_db.tdp_id is None or paragraph_db.title is None or paragraph_db.text is None or paragraph_db.text_raw is None:
-				raise Exception("[DB][post_paragraph] Missing fields")
-			# Execute insert query
-			cursor.execute('''INSERT INTO paragraphs (tdp_id, title, text, text_raw) VALUES (?, ?, ?, ?)''', 
-		  		(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw))
-			self.conn.commit()
-		# Update paragraph if id is not None
+			# Execute insert query. If UNIQUE constraint is violated, return the existing entry. Otherwise, raise exception.
+			try:
+				cursor.execute('''INSERT INTO paragraphs (tdp_id, title, text, text_raw) VALUES (?, ?, ?, ?)''', 
+					(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw))
+				self.conn.commit()
+			except sqlite3.IntegrityError as e:
+				if "UNIQUE constraint failed" in str(e):
+					print(f"[DB] Paragraph already exists: {paragraph_db}")
+					# Entry already exists. Return the existing entry
+					paragraph = self.conn.execute('''SELECT * FROM paragraphs WHERE tdp_id = ? AND title = ? AND text = ? AND text_raw = ?''',
+						(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw)).fetchone()
+					return Paragraph_db.from_dict(paragraph)
+				else:
+					print(f"[DB] IntegrityError: {e}")
+					raise e
+     
+  		# Update paragraph if id is not None
 		else:
 			# First get the paragraph from the database
-			paragraph_db_old = self.get_paragraph_by_id(paragraph_db)
+			paragraph_db_old = self.get_paragraph(paragraph_db)
 			# Then merge the old paragraph with the new paragraph
 			paragraph_db.merge(paragraph_db_old)
 			# Execute update query
-			cursor.execute('''
-				UPDATE paragraphs
-				SET tdp_id = ?, title = ?, text = ?, text_raw = ?
-				WHERE id = ?
-			''', (paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw, paragraph_db.id))
+			cursor.execute('''UPDATE paragraphs SET tdp_id = ?, title = ?, text = ?, text_raw = ? WHERE id = ?''', 
+				(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw, paragraph_db.id))
 			self.conn.commit()
+   
+		print(f"[DB] Paragraph {paragraph_db} saved")
 
-		return cursor.lastrowid
-
+		# Return an instance of the inserted or updated paragraph
+		return self.get_paragraph_by_rowid(cursor.lastrowid)
+  
 	def delete_paragraph(self, paragraph_db:Paragraph_db):
 		# Check if paragraph_id is not None
 		if paragraph_db.id is None:
@@ -296,12 +349,23 @@ class Database:
 		print(f"[DB] Paragraph {paragraph_db.id} deleted")
 
 	""" Sentences """
-
-	def get_sentence_by_id(self, sentence_db:Sentence_db):
-		sentence = self.conn.execute('''SELECT * FROM sentences WHERE id = ?''', (sentence_db.id,)).fetchone()
+ 
+	def get_sentence_by_rowid(self, rowid:int):
+		sentence = self.conn.execute('''SELECT * FROM sentences WHERE rowid = ?''', (rowid,)).fetchone()
 		return Sentence_db.from_dict(sentence)
 
-	def get_sentences(self, paragraph_db:Paragraph_db=None):
+	def get_sentence_by_id(self, sentence_id:int):
+		sentence = self.conn.execute('''SELECT * FROM sentences WHERE id = ?''', (sentence_id,)).fetchone()
+		return Sentence_db.from_dict(sentence)
+
+	def get_sentence(self, sentence_db:Sentence_db):
+		return self.get_sentence_by_id(sentence_db.id)
+
+	def get_sentences(self):
+		sentences = self.conn.execute('''SELECT * FROM sentences''').fetchall()
+		return [Sentence_db.from_dict(sentence) for sentence in sentences]
+
+	def get_sentences_by_paragraph(self, paragraph_db:Paragraph_db=None):
 		if paragraph_db is None:
 			sentences = self.conn.execute('''SELECT * FROM sentences''').fetchall()
 			return [Sentence_db.from_dict(sentence) for sentence in sentences]
@@ -314,6 +378,13 @@ class Database:
 		INNER JOIN tdps ON paragraphs.tdp_id = tdps.id
 		"""
 
+	def get_sentences_by_tdp(self, tdp_db:TDP_db):
+		sentences = self.conn.execute('''SELECT sentences.* FROM sentences
+			INNER JOIN paragraphs ON sentences.paragraph_id = paragraphs.id
+			INNER JOIN tdps ON paragraphs.tdp_id = tdps.id
+			WHERE tdps.id = ?''', (tdp_db.id,)).fetchall()
+		return [Sentence_db.from_dict(sentence) for sentence in sentences]
+
 	def post_sentences(self, sentences_db:list[Sentence_db]):
 		# First, ensure that all sentences belong to the same paragraph
 		paragraph_ids = list(set([sentence_db.paragraph_id for sentence_db in sentences_db]))
@@ -324,9 +395,17 @@ class Database:
 		self.conn.execute('''DELETE FROM sentences WHERE paragraph_id = ?''', (paragraph_ids[0],))
 
 		# Insert all sentences
+		cursor = self.conn.cursor()
+		sentence_ids = []
 		for sentence_db in sentences_db:
-			self.conn.execute('''INSERT INTO sentences (paragraph_id, sentence, embedding) VALUES (?, ?, ?)''',
+			cursor.execute('''INSERT INTO sentences (paragraph_id, sentence, embedding) VALUES (?, ?, ?)''',
 				(sentence_db.paragraph_id, sentence_db.sentence, sentence_db.embedding))
+			sentence_ids.append(cursor.lastrowid)
+		self.conn.commit()
+  
+		# Return instances of all inserted sentences
+		# TODO: This is not very efficient, but it works for now
+		return [self.get_sentence(Sentence_db(id=sentence_id)) for sentence_id in sentence_ids]
 
 
 

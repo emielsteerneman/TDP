@@ -17,27 +17,25 @@ def download_file(year, filename):
 def static_file(filename):
     return send_from_directory(f'templates', filename)
 
-
 def tdps(request, groupby=None):
     tdps = db_instance.get_tdps()
-    tdps = [ dict(_) for _ in tdps ]
     
     if groupby == 'team':
         teams = {}
         for tdp in tdps:
-            if tdp['team'] not in teams: teams[tdp['team']] = []
-            teams[tdp['team']].append(tdp)
+            if tdp.team not in teams: teams[tdp.team] = []
+            teams[tdp.team].append(tdp)
         # Sort by year
-        teams = { team: sorted(teams[team], key=lambda _: _['year'], reverse=True) for team in teams }
+        teams = { team: sorted(teams[team], key=lambda _: _.year, reverse=True) for team in teams }
         return render_template('tdps.html', data=teams, groupby=groupby)
     
     if groupby == 'year':
         years = {}
         for tdp in tdps:
-            if tdp['year'] not in years: years[tdp['year']] = []
-            years[tdp['year']].append(tdp)
+            if tdp.year not in years: years[tdp.year] = []
+            years[tdp.year].append(tdp)
         # Sort by team
-        years = { year: sorted(years[year], key=lambda _: _['team']) for year in years }
+        years = { year: sorted(years[year], key=lambda _: _.team) for year in years }
         return render_template('tdps.html', data=years, groupby=groupby)
 
     return render_template('tdps.html', data=tdps, groupby=groupby)
@@ -48,10 +46,9 @@ def hello():
 
 @app.get("/tdps/<id>")
 def get_tdps_id(id):
-    tdp_db = Database.TDP_db(id=id)
-    tdp = db_instance.get_tdp_by_id(tdp_db)
-    filepath = f"/TDPs/{tdp['year']}/{tdp['filename']}"
-    return render_template('tdp.html', tdp=tdp, filepath=filepath)
+    tdp_db = db_instance.get_tdp_by_id(id)
+    filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
+    return render_template('tdp.html', tdp=tdp_db, filepath=filepath)
 
 # @app.get("/api/tdps/<id>")
 # def get_api_tdps_id(id):
@@ -66,7 +63,7 @@ def get_api_tdps():
 
 @app.get("/api/tdps/<tdp_id>/paragraphs")
 def get_api_tdps_id_paragraphs(tdp_id):
-    paragraphs = db_instance.get_paragraphs(Database.TDP_db(id=tdp_id))
+    paragraphs = db_instance.get_paragraphs_by_tdp(Database.TDP_db(id=tdp_id))
     return [ paragraph.to_dict() for paragraph in paragraphs ]
 @app.post("/api/tdps/<tdp_id>/paragraphs")
 def post_api_tdps_id_paragraphs(tdp_id):

@@ -47,7 +47,7 @@ for i_tdp, tdp in enumerate(tdps):
     
     # Add TDP to database
     tdp_instance = U.parse_tdp_name(tdp)
-    tdp_id = db_instance.post_tdp(**tdp_instance)
+    tdp_instance = db_instance.post_tdp(tdp_instance)
     
     try:
         # Open TDP pdf with PyMuPDF        
@@ -181,7 +181,7 @@ for i_tdp, tdp in enumerate(tdps):
         
         for paragraph_title, paragraph in zip(paragraph_titles, paragraphs):
             
-            paragraph_db = Database.Paragraph_db(title=paragraph_title)
+            
 
             # TODO maybe improve excessive "\n".join() and .splitlines() calls
             text_raw = ". ".join(paragraph)
@@ -196,8 +196,6 @@ for i_tdp, tdp in enumerate(tdps):
             text = text.replace("e.g.", "eg")
             text = text.replace("i.e.", "ie")
 
-            paragraph_id = db_instance.post_paragraph(-1, tdp_id, paragraph_title, text, text_raw)
-            
             ### Split into sentences
             # However, don't split on numbers, because those are often part of the sentence
             
@@ -227,19 +225,21 @@ for i_tdp, tdp in enumerate(tdps):
 
             text = " ".join(sentences)
 
-            paragraph_db = Database.Paragraph_db(title=paragraph_title, text=text, text_raw=text_raw)
-            print(paragraph_db.title)
+            paragraph_db = Database.Paragraph_db(tdp_id=tdp_instance.id, title=paragraph_title, text=text, text_raw=text_raw)
+            paragraph_db = db_instance.post_paragraph(paragraph_db)
 
             # Calculate embeddings
             embeddings = [ E.embed(sentence) for sentence in sentences ]
             
             # Store in database
-            db_instance.post_sentences(paragraph_id, sentences, embeddings)
+            sentences_db = [ Database.Sentence_db(sentence=sentence, embedding=embedding, paragraph_id=paragraph_db.id) for sentence, embedding in zip(sentences, embeddings)]
+            db_instance.post_sentences(sentences_db)
             
             sentences_all += sentences
 
     except Exception as e:
         print(f"Exception on TDP {tdp}: {e}")
+        raise e
 
 print(f"Total sentences: {n_sentences}")
 print(f"Total characters: {total_characters}")
