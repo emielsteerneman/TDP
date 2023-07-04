@@ -34,37 +34,71 @@
 
       <hr>
 
-      <div class="row">
-        <!-- Paragraphs -->
-        <div class="col-md-12" v-if="sentences.length">
-            
-            <!-- For each sentence -->
-            <h2> Sentences </h2>
-            <div v-for="sentence in sentences" class="row">
-                <div style="font-size: 12px;">- {{ sentence['sentence'] }} </div>
-            </div>
-            
-            <br><br>
 
+      <!-- MAIN CONTENT -->
+
+      <!-- Main row -->
+      <div class="row" v-if="sentences.length">
+
+          <!-- Begin sentences -->
+          <div class="col-md-6" style="padding-right: 20px;">
+            <h2> Sentences </h2>
+            <!-- For each tdp -->
+            <div v-for="(paragraphs, tdp_id) in sentences_by_tdp" class="row" style="padding-bottom: 20px">
+              
+              <div class="col-md-11">
+                <a v-bind:href="'/tdps/' + tdp_id"> {{ getTdp(tdp_id)['team'] }} {{ getTdp(tdp_id)['year'] }} </a>
+              </div>
+              
+              <!-- For each paragraph in tdp -->
+              <div v-for="(sentences, paragraph_id) in paragraphs" style="padding-left: 20px;">
+                <!-- paragraph title -->
+                <div class="col-md-11" style="font-size: 14px; font-weight: bold;" > {{ sentences[0]['paragraph_title'] }} </div>
+                <!-- For each sentence in paragraph -->
+                <div v-for="sentence in sentences" class="row">
+                  <div class="col-md-11" style="font-size: 12px;" v-html="highlight(sentence['text_raw'])"></div>
+                </div><!-- // For each sentence -->
+              </div><!-- // For each paragraph -->
+
+            </div><!-- // For each tdp -->
+          </div><!-- End sentences-->
+
+
+
+          <div class="col-md-6" style="padding-left: 20px">
             <!-- For each paragraph -->
             <h2> Paragraphs </h2>
             <div v-for="paragraph in paragraphs" class="row">
-                <div class="col-md-1">
-                    <a v-bind:href="'/tdps/' + paragraph['tdp_id']"> Open PDF</a>
-                </div>
                 <div class="col-md-11">
-                    {{ getTdp(paragraph['tdp_id'])['team'] }} {{ getTdp(paragraph['tdp_id'])['year'] }} - {{ paragraph['title'] }} ({{ paragraph['id'] }})
+                    <a v-bind:href="'/tdps/' + paragraph['tdp_id']"> {{ getTdp(paragraph['tdp_id'])['team'] }} {{ getTdp(paragraph['tdp_id'])['year'] }}</a> <div style="padding-left: 20px; display: inline; font-size: 14px; font-weight: bold;"> {{ paragraph['title'] }}</div>
                 </div>
-                <p style="font-size: 12px;"> {{ paragraph['text'] }} </p>
-                
+                <p style="font-size: 12px;" v-html="highlight(paragraph['text_raw'])"></p>
             </div>
-        </div>
+          </div>
 
-      </div> <!-- Main row -->
+          
+
+      </div> <!-- // Main row -->
     </div> <!-- Container -->
 
     <script>
 
+    function getIndicesOf(searchStr, str, caseSensitive) {
+      var searchStrLen = searchStr.length;
+      if (searchStrLen == 0) {
+          return [];
+      }
+      var startIndex = 0, index, indices = [];
+      if (!caseSensitive) {
+          str = str.toLowerCase();
+          searchStr = searchStr.toLowerCase();
+      }
+      while ((index = str.indexOf(searchStr, startIndex)) > -1) {
+          indices.push(index);
+          startIndex = index + searchStrLen;
+      }
+      return indices;
+    }
 
     function postQuery(query, callback){
         axios.post("/api/query", {
@@ -72,13 +106,25 @@
         }).then(callback)
     }
 
+    function highlight_words(text, words){
+        words.forEach(word => {
+            indices = getIndicesOf(word, text, false)
+            indices.slice().reverse().forEach(index => {
+                text = text.slice(0, index) + "<span style='background-color: yellow;'>" + text.slice(index, index + word.length) + "</span>" + text.slice(index + word.length)
+            })
+        })
+        return text
+    }
+
     var app = new Vue({
         el: '#app',
         data: {
             query: "",
             sentences: [],
+            sentences_by_tdp: [],
             paragraphs: [],
             tdps: [],
+            query_words: []
         },
         methods: {
             onSubmit: function(){ 
@@ -86,21 +132,41 @@
                     this.query,
                     response => {
                         this.sentences = response.data['sentences']
+                        this.sentences_by_tdp = response.data['sentences_by_tdp']
                         this.paragraphs = response.data['paragraphs']
                         this.tdps = response.data['tdps']
+                        this.query_words = response.data['query_words']
+                        console.log(this.query_words)
                     }
                 )
             },
             getTdp: function(tdp_id){
-                console.log("getTdp", tdp_id)
                 tdp_found = null
                 this.tdps.forEach(tdp => {
                     if(tdp['id'] == tdp_id){
-                        console.log("getTdp", tdp_id, "FOUND")
                         tdp_found = tdp
                     }
                 })
+                if (tdp_found == null){
+                    return "Error: not found"
+                }
                 return tdp_found
+            },
+            getParagraph: function(paragraph_id){
+                paragraph_found = null
+                this.paragraphs.forEach(paragraph => {
+                    if(paragraph['id'] == paragraph_id){
+                        paragraph_found = paragraph
+                        console.log("Found paragraph with id " + paragraph_id)
+                    }
+                })
+                if (paragraph_found == null){
+                    console.log("Could not find paragraph with id " + paragraph_id)
+                }
+                return paragraph_found
+            },
+            highlight: function(text){
+                return highlight_words(text, this.query_words)
             }
         },
         mounted: function() {

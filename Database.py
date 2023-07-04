@@ -61,6 +61,9 @@ class TDP_db:
 	def __str__(self):
 		return f"TDP_db(id={self.id}, filename={self.filename}, team={self.team}, year={self.year}, is_etdp={self.is_etdp})"
 
+	def __dict__(self):
+		return self.to_dict()
+
 class Paragraph_db:
 	""" Class that represents a paragraph in the database """
 	def __init__(self, id:int=None, tdp_id:int=None, title:str=None, text:str=None, text_raw:str=None) -> None:
@@ -101,19 +104,24 @@ class Paragraph_db:
 	def __str__(self) -> str:
 		return f"Paragraph_db(id={self.id}, tdp_id={self.tdp_id}, title={self.title})"
 
+	def __dict__(self):
+		return self.to_dict()
+ 
 class Sentence_db:
 	""" Class that represents a sentence in the database """
-	def __init__(self, id:int=None, paragraph_id:int=None, sentence:str=None, embedding:np.ndarray=None) -> None:
+	def __init__(self, id:int=None, paragraph_id:int=None, text:str=None, text_raw:str=None, embedding:np.ndarray=None) -> None:
 		self.id = id
 		self.paragraph_id = paragraph_id
-		self.sentence = sentence
+		self.text = text
+		self.text_raw = text_raw
 		self.embedding = embedding
 
 	""" Copy all fields from other sentence to this sentence if fields in this sentence are None"""
 	def merge(self, other:Sentence_db) -> None:
 		if self.id is None: self.id = other.id
 		if self.paragraph_id is None: self.paragraph_id = other.paragraph_id
-		if self.sentence is None: self.sentence = other.sentence
+		if self.text is None: self.text = other.text
+		if self.text_raw is None: self.text_raw = other.text_raw
 		if self.embedding is None: self.embedding = other.embedding
 
 	""" Convert sentence to dict """
@@ -121,23 +129,35 @@ class Sentence_db:
 		return {
 			"id": self.id,
 			"paragraph_id": self.paragraph_id,
-			"sentence": self.sentence,
+			"text": self.text,
+			"text_raw": self.text_raw,
 			"embedding": self.embedding
 		}
 
+	""" Special case of dict that can be converted to json, by removing the np.array embedding """
+	def to_json_dict(self) -> str:
+		dict_ = self.to_dict()
+		dict_.pop("embedding")
+		return dict_
+ 
 	@staticmethod
 	def from_dict(sentence:dict) -> Sentence_db:
 		return Sentence_db(
 			id=sentence["id"],
 			paragraph_id=sentence["paragraph_id"],
-			sentence=sentence["sentence"],
+			text=sentence["text"],
+			text_raw=sentence["text_raw"],
 			embedding=sentence["embedding"]
 		)
 
 	def __str__(self) -> str:
-		sentence_short = self.sentence[:10] + " ... " + self.sentence[-10:] if len(self.sentence) > 25 else self.sentence
-		return f"Sentence_db(id={self.id}, paragraph_id={self.paragraph_id}, sentence={sentence_short})"	
+		text_short = self.text[:10] + " ... " + self.text[-10:] if len(self.text) > 25 else self.text
+		text_raw_short = self.text_raw[:10] + " ... " + self.text_raw[-10:] if len(self.text_raw) > 25 else self.text_raw
+		return f"Sentence_db(id={self.id}, paragraph_id={self.paragraph_id}, text='{text_short}', text_raw='{text_raw_short}')"	
   	
+	def __dict__(self):
+		return self.to_dict()
+
 class Database:
 
 	def __init__(self):
@@ -165,40 +185,41 @@ class Database:
 		# Create tables holding paragraphs. Each paragraph belongs to a TDP.
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS paragraphs (
-			   id INTEGER PRIMARY KEY AUTOINCREMENT,
-			   tdp_id INTEGER NOT NULL,
-			   title TEXT NOT NULL DEFAULT '',
-			   text TEXT NOT NULL DEFAULT '',
-			   text_raw TEXT NOT NULL DEFAULT '',
-			   FOREIGN KEY (tdp_id) REFERENCES tdps (id)
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				tdp_id INTEGER NOT NULL,
+				title TEXT NOT NULL DEFAULT '',
+				text TEXT NOT NULL DEFAULT '',
+				text_raw TEXT NOT NULL DEFAULT '',
+				FOREIGN KEY (tdp_id) REFERENCES tdps (id)
 			)
 		''')
 		# Create tables holding sentences. Each sentence belongs to a paragraph. Each sentence has an embedding.
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS sentences (
-			   id INTEGER PRIMARY KEY AUTOINCREMENT,
-			   paragraph_id INTEGER NOT NULL,
-			   sentence TEXT NOT NULL,
-			   embedding NP_ARRAY NOT NULL,
-			   FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				paragraph_id INTEGER NOT NULL,
+				text TEXT NOT NULL,
+				text_raw TEXT NOT NULL,
+				embedding NP_ARRAY NOT NULL,
+				FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
 			)
 		''')
 		# Create database with tags
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS tags (
-			   id INTEGER PRIMARY KEY AUTOINCREMENT,
-			   tag TEXT NOT NULL UNIQUE,
-			   embedding NP_ARRAY NOT NULL
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				tag TEXT NOT NULL UNIQUE,
+				embedding NP_ARRAY NOT NULL
 			)
 		''')
 		# Create database that connects tags and paragraphs
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS tag_paragraph (
-			   id INTEGER PRIMARY KEY AUTOINCREMENT,
-			   tag_id INTEGER NOT NULL,
-			   paragraph_id INTEGER NOT NULL,
-			   FOREIGN KEY (tag_id) REFERENCES tags (id),
-			   FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				tag_id INTEGER NOT NULL,
+				paragraph_id INTEGER NOT NULL,
+				FOREIGN KEY (tag_id) REFERENCES tags (id),
+				FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
 			)
 		''')
 		
@@ -378,6 +399,23 @@ class Database:
 		INNER JOIN tdps ON paragraphs.tdp_id = tdps.id
 		"""
 
+	def get_sentence_exhaustive(self, sentence_db:Sentence_db):
+		sentence = self.conn.execute('''
+			SELECT sentences.*, paragraphs.id AS paragraph_id, paragraphs.title AS paragraph_title, tdps.id AS tdp_id FROM sentences
+			INNER JOIN paragraphs ON sentences.paragraph_id = paragraphs.id
+			INNER JOIN tdps ON paragraphs.tdp_id = tdps.id
+			WHERE sentences.id = ?''', (sentence_db.id,)).fetchone()
+		return sentence
+
+	def get_sentences_exhaustive(self):
+		sentences = self.conn.execute('''
+   			SELECT sentences.*, paragraphs.id AS paragraph_id, tdps.id AS tdp_id FROM sentences
+			INNER JOIN paragraphs ON sentences.paragraph_id = paragraphs.id
+			INNER JOIN tdps ON paragraphs.tdp_id = tdps.id''').fetchall()
+  		
+		return sentences
+		# return [Sentence_db.from_dict(sentence) for sentence in sentences]	
+
 	def get_sentences_by_tdp(self, tdp_db:TDP_db):
 		sentences = self.conn.execute('''SELECT sentences.* FROM sentences
 			INNER JOIN paragraphs ON sentences.paragraph_id = paragraphs.id
@@ -398,15 +436,14 @@ class Database:
 		cursor = self.conn.cursor()
 		sentence_ids = []
 		for sentence_db in sentences_db:
-			cursor.execute('''INSERT INTO sentences (paragraph_id, sentence, embedding) VALUES (?, ?, ?)''',
-				(sentence_db.paragraph_id, sentence_db.sentence, sentence_db.embedding))
+			cursor.execute('''INSERT INTO sentences (paragraph_id, text, text_raw, embedding) VALUES (?, ?, ?, ?)''',
+				(sentence_db.paragraph_id, sentence_db.text, sentence_db.text_raw, sentence_db.embedding))
 			sentence_ids.append(cursor.lastrowid)
 		self.conn.commit()
   
 		# Return instances of all inserted sentences
 		# TODO: This is not very efficient, but it works for now
 		return [self.get_sentence(Sentence_db(id=sentence_id)) for sentence_id in sentence_ids]
-
 
 
 instance = Database()

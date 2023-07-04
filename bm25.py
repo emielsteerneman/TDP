@@ -10,7 +10,7 @@ sentences_db = db_instance.get_sentences(inclusive=True)
 
 # Tokenize sentences
 now = time.time()
-tokenized_corpus = [_['sentence'].split(" ") for _ in sentences_db]
+tokenized_corpus = [_['text'].split(" ") for _ in sentences_db]
 bm25 = BM25Okapi(tokenized_corpus)
 print(f"Time taken to create BM25 model: {time.time() - now:.2f} seconds")
 
@@ -49,7 +49,7 @@ print(f"Highest score: {np.max(final_scores)}")
 argsort = np.argsort(final_scores)[::-1]
 
 for s in argsort[:10]:
-    print(f"{final_scores[s]:.2f}", sentences_db[s]['year'], sentences_db[s]['team'].rjust(15), "|", sentences_db[s]['sentence'])
+    print(f"{final_scores[s]:.2f}", sentences_db[s]['year'], sentences_db[s]['team'].rjust(15), "|", sentences_db[s]['text'])
 
 
 # wer = 0
@@ -57,14 +57,14 @@ for s in argsort[:10]:
 #     # print(score)
 #     if 4 < score:
 #         wer += 1
-#         print(score, "|", sentences_db[i_score]['sentence'])
+#         print(score, "|", sentences_db[i_score]['text'])
 
 # print(wer)
-# print(len([ _ for _ in sentences_db if "grsim" in _['sentence']]))
+# print(len([ _ for _ in sentences_db if "grsim" in _['text']]))
 
 # argsort = np.argsort(doc_scores)[::-1]
 # for i in range(5):
-#     print(sentences_db[argsort[i]]['sentence'])
+#     print(sentences_db[argsort[i]]['text'])
 
 # now = time.time()
 # topk = bm25.get_top_n(tokenized_query, tokenized_corpus, n=5)

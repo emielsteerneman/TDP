@@ -63,6 +63,9 @@ def get_api_tdps():
 
 @app.get("/api/tdps/<tdp_id>/paragraphs")
 def get_api_tdps_id_paragraphs(tdp_id):
+    tdp = db_instance.get_tdp_by_id(tdp_id)
+    print("Retrieving paragraphs for TDP", tdp.filename)
+    
     paragraphs = db_instance.get_paragraphs_by_tdp(Database.TDP_db(id=tdp_id))
     return [ paragraph.to_dict() for paragraph in paragraphs ]
 @app.post("/api/tdps/<tdp_id>/paragraphs")
@@ -89,11 +92,50 @@ def delete_api_tdps_id_paragraphs(tdp_id, paragraph_id):
 def post_api_query():
     body = request.get_json()
     query = body['query']
-    sentences, paragraphs, tdps = E.query(query)
+    sentences, paragraphs, tdps, query, query_words = E.query(query)
+    
+    sentences = [ db_instance.get_sentence_exhaustive(s) for s in sentences ]
+    for sentence in sentences: sentence.pop('embedding')
+    
+    # Group sentences by paragraph
+    sentences_by_paragraph = {}
+    for sentence in sentences:
+        paragraph_id = sentence['paragraph_id']
+        if paragraph_id not in sentences_by_paragraph: sentences_by_paragraph[paragraph_id] = []
+        sentences_by_paragraph[paragraph_id].append(sentence)
+   
+    print(sentences_by_paragraph)
+   
+        
+    # Group paragraph groups by tdp
+    paragraphs_by_tdp = {}
+    for paragraph_id, sentences in sentences_by_paragraph.items():
+        print("paragraph_id:", paragraph_id)
+        tdp_id = sentences[0]['tdp_id']
+        if tdp_id not in paragraphs_by_tdp: paragraphs_by_tdp[tdp_id] = {}
+        paragraphs_by_tdp[tdp_id][paragraph_id] = sentences
+    
+    # # Group sentences by tdp
+    # sentences_by_tdp = {}
+    # for sentence in sentences: 
+    #     tdp_id = sentence['tdp_id']
+    #     if tdp_id not in sentences_by_tdp: sentences_by_tdp[tdp_id] = []
+    #     sentences_by_tdp[tdp_id].append(sentence)
+    
+    print(paragraphs_by_tdp)
+    
+    
+    
+    paragraphs = [ _.to_dict() for _ in paragraphs ]
+    tdps = [ _.to_dict() for _ in tdps ]
+    
     return {
         'sentences': sentences,
+        'sentences_by_tdp': paragraphs_by_tdp,
         'paragraphs': paragraphs,
-        'tdps': tdps
+        'tdps': tdps,
+        'query': query,
+        'query_words': query_words
     }
 
 

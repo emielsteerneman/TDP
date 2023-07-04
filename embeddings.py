@@ -1,6 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import Database
 from Database import instance as db_instance
+
+import nltk
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+sw_nltk = stopwords.words('english')
 
 class Embeddings:
     def __init__(self):
@@ -10,7 +16,7 @@ class Embeddings:
         print("Loading model...")
         self.model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 
-        self.dbsentences = None
+        self.dbsentences:list[Database.Sentence_db] = None
 
     def cosine_similarity(self, a, b):
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
@@ -22,45 +28,49 @@ class Embeddings:
         print(f"[embeddings.py] Setting database {len(dbsentences)} sentences...")
         self.dbsentences = dbsentences
     
-    def get_similar_sentences(self, sentence_embedding, n=5):
+    def get_similar_sentences(self, query_embedding:np.array, n=5) -> tuple[list[Database.Sentence_db], list[Database.Paragraph_db], list[Database.TDP_db]]:
         if self.dbsentences is None:
             raise Exception("No database sentences set")
 
-        # Embed sentence
-        distances = [ [self.cosine_similarity(sentence_embedding, _['embedding']), _] for _ in self.dbsentences ]
-        return distances
-        
+        # Get distance to all other sentence embeddings
+        distances = [ [self.cosine_similarity(query_embedding, sentence_db.embedding), sentence_db ] for sentence_db in self.dbsentences ]
         # Sort by distance
         distances.sort(key=lambda _: _[0], reverse=True)
-        # Add distance and remove embedding
-        results = [
-            { 'id':sentence['id'], 'paragraph_id':sentence['paragraph_id'], 'sentence':sentence['sentence'], 'distance': float(distance) }
-            for distance, sentence in distances[:20] 
-        ]
+        distances = distances[:20]
+        # Add distance to sentences
+        results = [{ 'sentence':sentence_db, 'distance': float(distance) } for distance, sentence_db in distances ]
 
-        paragraph_ids = [ _['paragraph_id'] for _ in results ]
-
+        # Retrieve all paragraph ids from all selected sentences
+        paragraph_ids = [ _['sentence'].paragraph_id for _ in results ]
         # Count occurences of paragraph_id
         paragraph_occurences = {}
-        for result in results:
-            paragraph_occurences[result['paragraph_id']] = paragraph_occurences.get(result['paragraph_id'], 0) + 1
+        for paragraph_id in paragraph_ids:
+            paragraph_occurences[paragraph_id] = paragraph_occurences.get(paragraph_id, 0) + 1
         paragraph_occurences = [ [k, v] for k, v in paragraph_occurences.items() ]
         # Sort occurences
         paragraph_occurences.sort(key=lambda _: _[1], reverse=True)
-        print(paragraph_occurences)
+        print("[embeddings.py][gss] paragraph_occurences", paragraph_occurences)
 
+        # Get all paragraphs
+        paragraphs = [ db_instance.get_paragraph_by_id(paragraph_id) for paragraph_id, _ in paragraph_occurences ]
         # Get top 3 paragraphs
-        top_paragraphs = [ db_instance.get_paragraph(paragraph_id) for paragraph_id, _ in paragraph_occurences[:3] ]
+        top_paragraphs = paragraphs[:3]
+        
+        tdp_ids = list(set([ _.tdp_id for _ in paragraphs ]))
+        tdps = [ db_instance.get_tdp_by_id(tdp_id) for tdp_id in tdp_ids ]
 
-        tdp_ids = list(set([ _['tdp_id'] for _ in top_paragraphs ]))
-        tdps = [ db_instance.get_tdp(tdp_id) for tdp_id in tdp_ids ]
+        sentences = [ _['sentence'] for _ in results ]
 
-        return results, top_paragraphs, tdps
+        return sentences, top_paragraphs, tdps
 
-    def query(self, sentence):
+    def query(self, sentence_:str):
+        sentence = sentence_
         print(f"[embeddings.py] Querying '{sentence}'")
-        sentence_embedding = self.embed(sentence)
-        return self.get_similar_sentences(sentence_embedding)
+        words = [ word for word in sentence.lower().split(' ') if word not in sw_nltk ]
+        sentence = " ".join(words)
+        print(f"[embeddings.py] Cleaned up '{sentence}'")
+        query_embedding = self.embed(sentence)
+        return *self.get_similar_sentences(query_embedding), sentence_, words
 
 
 Embeddor = Embeddings()
