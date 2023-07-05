@@ -3,7 +3,8 @@ ChatErTeeTeeeeTeeDeePee
 
 ## Setup
 ```
-$ download_tdps.py
-$ fill_database.py 
+$ pip install -r requirements.txt
+$ python download_tdps.py
+$ python fill_database.py 
 $ flask run
 ```
