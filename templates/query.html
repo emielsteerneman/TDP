@@ -26,10 +26,10 @@
 
       <div class="row">
         <div class="offset-md-3 col-md-5">
-            <input type="text" name="query" class="form-control" v-model="query" placeholder="Query">
+            <input type="text" name="query" class="form-control" v-model="query" placeholder="Query" v-on:keyup.enter="onSubmit">
         </div>
         <div class="col-md-1">
-          <button class="form-control btn btn-success" v-on:click="onSubmit">Ask</button>
+          <button class="form-control btn btn-success" v-on:click="onSubmit" >Ask</button>
         </div>
       </div>
 
@@ -146,19 +146,20 @@
             ]
         },
         methods: {
-            onSubmit: function(){ 
-                postQuery(
-                    this.query,
-                    response => {
-                        this.sentences = response.data['sentences']
-                        this.sentences_by_tdp = response.data['sentences_by_tdp']
-                        this.paragraphs = response.data['paragraphs']
-                        this.tdps = response.data['tdps']
-                        this.tdp_order = response.data['tdp_order'],
-                        this.query_words = response.data['query_words']
-                        console.log(this.query_words)
-                    }
-                )
+            onSubmit: function(){
+              this.show_example_query = false 
+              postQuery(
+                  this.query,
+                  response => {
+                      this.sentences = response.data['sentences']
+                      this.sentences_by_tdp = response.data['sentences_by_tdp']
+                      this.paragraphs = response.data['paragraphs']
+                      this.tdps = response.data['tdps']
+                      this.tdp_order = response.data['tdp_order'],
+                      this.query_words = response.data['query_words']
+                      console.log(this.query_words)
+                  }
+              )
             },
             getTdp: function(tdp_id){
                 tdp_found = null
@@ -189,7 +190,6 @@
                 return highlight_words(text, this.query_words)
             },
             run_example_query: function(text){
-              this.show_example_query = false
               this.query = text
               this.onSubmit()
             },
