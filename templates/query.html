@@ -108,6 +108,7 @@
 
     function highlight_words(text, words){
         words.forEach(word => {
+            word = " " + word
             indices = getIndicesOf(word, text, false)
             indices.slice().reverse().forEach(index => {
                 text = text.slice(0, index) + "<span style='background-color: yellow;'>" + text.slice(index, index + word.length) + "</span>" + text.slice(index + word.length)

@@ -25,7 +25,7 @@ sw_nltk = stopwords.words('english')
 CHARACTER_FILTER = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.,;:!?()[]{}\"'"
 
 tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
-tdps = U.find_all_TDPs()[:10]
+tdps = U.find_all_TDPs()
 tdps = [ _ for _ in tdps if _ not in tdp_blacklist ]
 
 # tdps = [ "./TDPs/2015/2015_TDP_ACES.pdf" ]
@@ -139,6 +139,8 @@ def find_paragraph_titles(sentences, force_next_needed=None):
     semvers = []
 
     reference_at = -1
+    abstract_at = -1
+    
     for i_sentence in range(len(sentences)):
         sentence = sentences[i_sentence]
         if sentence.lower().startswith("reference"): 
@@ -344,125 +346,6 @@ for i_tdp, tdp in enumerate(tdps):
             if fill_database_tests.test_cases[tdp] != paragraph_titles:
                 raise Exception(f"Test case failed for {tdp}!")
         
-        # for s, p in list(zip(paragraph_titles, paragraph_sentences)):
-        #     print()
-        #     print(s, "|", "\n".join(p))
-        
-       
-        """
-
-        # For each page, split into paragraph titles and sentences
-        # What is a sentence? Something ends with a period. However, take care not to split on 
-        # periods in numbers such as 3.1415
-        for i_page, sentences in enumerate(page_sentences):
-            pagenumber_found = False
-            # print(f"\n  Page {i_page} ({len(sentences)} sentences)")
-
-            # For each sentence in page
-            for i_sentence, sentence in enumerate(sentences):
-                # print(i_sentence, sentence)
-
-                # Skip empty sentences
-                if not len(sentence): continue
-
-                # Skip next if needed
-                if skipNext:
-                    skipNext = False
-                    continue
-                
-                # Skip everything before the abstract. This prevents stuff like "1 Department of ..." from being parsed as a paragraph
-                # Example where it goes wrong: 2011_TDP_TIGERs_Mannheim.pdf
-                if not abstract_found:
-                    abstract_found = "abstract" in sentence.lower()
-                    continue
-
-                if sentence.strip().lower() in ["reference", "references"]:
-                    references_found = True
-
-                if references_found:
-                    continue
-                
-                # Split the sentence into words
-                words = sentence_to_words(sentence)
-                                
-                # Skip sentences without words
-                if not len(words): continue
-                
-                # If the page has page numbers, skip the first and last sentence
-                # 0 < i_page since the first page lacks a pagenumber
-                if 0 < i_page and has_pagenumbers_top and not pagenumber_found:
-                    # print(f"Skipping first sentence |{sentence}|")
-                    pagenumber_found = str(i_page+1) in words
-                    continue
-                if i_sentence == len(sentences)-1 and has_pagenumbers_bottom:
-                    # print(f"Skipping last sentence |{sentence}|")
-                    continue
-                
-                # If the first word is a semver, and the last word is a word, then it is a paragraph
-                issemver = Semver.is_semver(words[0])
-                last_is_word = len(words) == 1 or words[-1].isalpha()
-                has_correct_formatting = True
-                if has_both_semver_and_title_found:
-                    if has_both_semver_and_title:
-                        has_correct_formatting = issemver and words[-1].isalpha() and 1 < len(words)
-                    else:
-                        has_correct_formatting = issemver and len(words) == 1
-                has_correct_formatting = True
-
-                # New paragraph found?
-                if issemver and last_is_word and has_correct_formatting:
-                    semver_next = Semver.parse(words[0])
-                    # print(f"    {semver_next}")
-                    # Check if the next semver is a strict followup of the current semver
-                    # Good followups: 1.0.0 -> 1.0.1. 1.1.0. 2.0.0; Bad followups: 1.0.0 -> 1.0.3, 4.1.0, 0.1.0
-                    if semver_next.is_strict_followup(semver_current):
-                        
-                        # New paragraph found
-                        # First, what to do with the current paragraph?
-                        # If we're still in semver 0.*, then it's all title and abstract etc, so we can throw it away
-                        # TODO store abstract as well somehow
-                        if semver_current.A != 0:
-                            # print(f"COMPLETED PARAGRAPH\n  {current_paragraph_title}\n  {current_paragraph[0] if len(current_paragraph) else 'Empty paragraph'}\n")
-                        
-                            paragraph_titles.append(current_paragraph_title)
-                            paragraphs.append(current_paragraph)
-                            
-                        current_paragraph = []
-                        semver_current = semver_next
-                        
-                        # Get new paragraph title
-                        if len(words) == 1:
-                            current_paragraph_title = f"{semver_current} " + sentences[i_sentence+1]
-                            skipNext = True
-                            has_both_semver_and_title = False
-                            case1 += 1
-                            # print(f"has_both_semver_and_title set to {has_both_semver_and_title}")
-                        else:
-                            current_paragraph_title = f"{semver_current} " + " ".join(words[1:])
-                            has_both_semver_and_title = True
-                            case2 += 1
-                            # print(f"has_both_semver_and_title set to {has_both_semver_and_title}")
-
-                        print("-------------------------", current_paragraph_title)
-                        has_both_semver_and_title_found = True
-                        # print("-"*20, semver_next)
-
-                        if "reference" in current_paragraph_title.lower():
-                            references_found = True
-                        
-                else:
-                    current_paragraph.append(sentence)
-        
-        # Store paragraph we're currently working on
-        if semver_current.A != 0:
-            paragraph_titles.append(current_paragraph_title)
-            paragraphs.append(current_paragraph)
-        """
-        
-        # All pages scanned for paragraph titles and paragraph sentences
-        # continue
-        
-        # print("\n\n\n\n=================================\n\n\n\n")
                 
         for paragraph_title, paragraph in zip(paragraph_titles, paragraph_sentences):
             
@@ -519,6 +402,9 @@ for i_tdp, tdp in enumerate(tdps):
                 sentences_processed.append(sentence)
 
             text = " ".join(sentences)
+                        
+            n_sentences += len(sentences)
+            total_characters += len(text)
 
             # Filter out any sentences where sentence_processed is None
             sentences_sentences_processed = list(zip(*[ [s, sp] for s, sp in zip(sentences, sentences_processed) if sp is not None ]))
@@ -541,12 +427,11 @@ for i_tdp, tdp in enumerate(tdps):
             sentences_db = [ Database.Sentence_db(text=sentence_processed, text_raw=sentence, embedding=embedding, paragraph_id=paragraph_db.id) for sentence, sentence_processed, embedding in zip(sentences, sentences_processed, embeddings)]
             db_instance.post_sentences(sentences_db)
             
-            sentences_all += sentences
 
     except Exception as e:
         print(f"Exception on TDP {tdp}: {e}")
         log_file.write(f"Exception on TDP {tdp}: {e}\n\n\n")
-        raise e
+        # raise e
 
 print(f"Total sentences: {n_sentences}")
 print(f"Total characters: {total_characters}")

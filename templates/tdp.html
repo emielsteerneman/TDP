@@ -16,53 +16,70 @@
     <title>{{ tdp['year'] }} - {{ tdp['team'] }}</title>
   </head>
   <body>
-    <div id="app" class="container-fluid">
-
+    <div id="app" class="container">
+      <br>
       <div class="row">
-        <div class="col-md-3">
-          <center><h1><a href="/tdps"> All TDPs </a></h1></center>
-        </div>  
         <div class="col-md-6">
-          <center><h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1></center>
+          <h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1>
         </div>
-        <div class="col-md-3"> &nbsp;
-          <a href="/tdps/{{ tdp['id']-1 }}" class="btn btn-primary">Previous</a>
-          <a href="/tdps/{{ tdp['id']+1 }}" class="btn btn-primary">Next</a>
+        <div class="offset-md-2 col-md-2 text-end">
+          <h1><a href="/tdps"> All TDPs </a></h1>
+        </div>  
+        <div class="col-md-2 text-end">
+          <h1><a href="/query"> Query </a></h1>
+        </div>  
+        
+        <!--
+        <div class="col-md-3">
+          <div class="row">
+            <div class="col-md-6">
+              <a href="/tdps/{{ tdp['id']-1 }}" class="btn btn-primary btn-sm">Previous</a>
+            </div>
+            <div class="col-md-6">
+              <a href="/tdps/{{ tdp['id']+1 }}" class="btn btn-primary btn-sm">Next</a>
+            </div>
+          </div>
         </div>
+        -->
+
       </div>
 
       <hr>
 
       <div class="row">
         <!-- PDF Viewer -->
-        <div class="col-md-6">
-            <object data="{{filepath}}" type="application/pdf" width="100%" height="800px">   
+        <div class="col-md-10">
+            <object data="{{filepath}}" type="application/pdf" width="100%" height="900px">   
             <p>Unable to display PDF file. <a href="{{filepath}}">Download</a> instead.</p>
             <p> Are you on Firefox? Go to <code>about:config</code> and set <code>browser.download.open_pdf_attachments_inline</code> to <code>true</code>.</p> 
             </object>
         </div>
 
         <!-- Paragraphs -->
-        <div class="col-md-6">
+        <div class="col-md-2">
             
           <!-- For each paragraph -->
           {% raw %}
-          <div style="overflow-y: scroll; height: 600px; padding-right: 10px;">
-          <div v-for="paragraph in paragraphs" :key="paragraph" class="row">
-              <div class="col-md-8">
-                <h5> {{ paragraph['title'] }} </h5>
-              </div>
-              <div class="col-md-2">
-                <button class="form-control btn btn-primary" v-on:click="onEdit(paragraph)">Edit</button>
-              </div>
-              <div class="col-md-2">
-                <button class="form-control btn btn-danger" v-on:click="onDelete(paragraph)">Delete</button>
-              </div>
-              <!-- <p style="font-size: 12px;"> {{ paragraph['text_raw'] }} </p> -->
-          </div>
+          <div style="overflow-y: scroll; overflow-x: hidden; padding-right: 10px;">
+            <h3> Paragraphs </h3>
+            <div v-for="paragraph in paragraphs" :key="paragraph">
+                <!--
+                <div class="col-md-2" style="padding-bottom: 3px">
+                  <button class="form-control btn btn-primary btn-sm" v-on:click="onEdit(paragraph)"> Read </button>
+                </div>
+                -->
+                  <div style="display:inline; font-size:14px; font-weight: bold;"> {{ paragraph['title'] }} </div>
+                <!--
+                <div class="col-md-2">
+                  <button class="form-control btn btn-danger" v-on:click="onDelete(paragraph)">Delete</button>
+                </div>
+                -->
+                <!-- <p style="font-size: 12px;"> {{ paragraph['text_raw'] }} </p> -->
+                <br>
+            </div>
           </div>
           
-          <!-- Active paragraph -->
+          <!-- Active paragraph 
           <div class="row">
               <div class="col-md-4">
                 <input type="text" name="title" class="form-control" v-model="active_paragraph.title" placeholder="Paragraph title">
@@ -77,12 +94,20 @@
                 <button class="form-control btn btn-warning" v-on:click="onClear">Clear</button>
               </div>
           </div>
+          -->
+
+          <!--
+          <p v-model='active_paragraph.text_raw'>{{ active_paragraph.text_raw }}</p>
+          -->
+
+          <!--
           <br>
           <div class="row">
               <div class="col-md-12">
                 <textarea rows="8" name="textfield" class="form-control" @paste="onTextfieldChange" @change="onTextfieldChange" v-model="active_paragraph.text"></textarea>
               </div>
           </div>
+          -->
           {% endraw %}
 
         </div> <!-- Active paragraph -->
@@ -134,7 +159,6 @@
             }
           )},
           onEdit: function(paragraph) {
-            console.log("editing", paragraph)
             this.active_paragraph = JSON.parse(JSON.stringify(paragraph));
           },
           onDelete: function(paragraph) {
