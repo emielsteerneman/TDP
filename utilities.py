@@ -1,7 +1,6 @@
 import os
 import Database
 from Database import instance as db_instance
-# from embeddings import Embeddor as E
 
 def find_all_TDPs():
     """Find all TDP pdf files in all subdirectories of current directory"""

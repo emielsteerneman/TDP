@@ -3,7 +3,7 @@ from flask import Flask, render_template, request, send_from_directory
 import Database
 from Database import instance as db_instance
 import utilities as U
-from embeddings import Embeddor as E
+from Embeddings import Embeddor as E
 import os
 import Search
 from Search import instance as search_instance

@@ -9,7 +9,7 @@ import time
 import Database
 from Database import instance as db_instance
 from Semver import Semver, SemverSearch
-from embeddings import Embeddor as E
+from Embeddings import Embeddor as E
 from itertools import chain
 from typing import List, Tuple, Dict
 import functools

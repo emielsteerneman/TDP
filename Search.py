@@ -7,7 +7,7 @@ sw_nltk = stopwords.words('english')
 
 import Database
 from Database import instance as db_instance
-from embeddings import Embeddor as E
+from Embeddings import Embeddor as E
 import time 
 from rank_bm25 import BM25Okapi
 import numpy as np
