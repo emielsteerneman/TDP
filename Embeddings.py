@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import Database
 from Database import instance as db_instance
 
