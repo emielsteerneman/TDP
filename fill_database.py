@@ -17,7 +17,7 @@ import fill_database_tests
 import nltk
 
 
-nltk.download('stopwords')
+# nltk.download('stopwords')
 from nltk.corpus import stopwords
 sw_nltk = stopwords.words('english')
 
@@ -25,6 +25,8 @@ sw_nltk = stopwords.words('english')
 CHARACTER_FILTER = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.,;:!?()[]{}\"'"
 
 tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
+tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") # Blacklist because it's almost a perfect duplicate of their 2016 paper
+
 tdps = U.find_all_TDPs()
 tdps = [ _ for _ in tdps if _ not in tdp_blacklist ]
 

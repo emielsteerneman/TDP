@@ -1,7 +1,7 @@
 print("[Search] Initializing search.py")
 
 import nltk
-nltk.download('stopwords')
+# nltk.download('stopwords')
 from nltk.corpus import stopwords
 sw_nltk = stopwords.words('english')
 

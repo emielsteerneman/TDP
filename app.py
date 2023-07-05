@@ -4,8 +4,9 @@ import Database
 from Database import instance as db_instance
 import utilities as U
 from embeddings import Embeddor as E
+import os
 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder='templates', static_folder='static')
 
 E.set_sentences(db_instance.get_sentences())
 
@@ -16,6 +17,14 @@ def download_file(year, filename):
 @app.route('/templates/<filename>')
 def static_file(filename):
     return send_from_directory(f'templates', filename)
+
+@app.route('/static/logos/<filename>')
+def static_logo(filename):
+    # Check if logo exists, else default logo
+    if os.path.exists('static/logos/' + filename):
+        return send_from_directory('static/logos', filename)
+    else:
+        return send_from_directory('static/logos', '10px.png')
 
 def tdps(request, groupby=None):
     tdps = db_instance.get_tdps()
@@ -50,9 +59,9 @@ def get_tdps_id(id):
     filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
     return render_template('tdp.html', tdp=tdp_db, filepath=filepath)
 
-# @app.get("/api/tdps/<id>")
-# def get_api_tdps_id(id):
-#     return { "hello": "world" }
+@app.get("/query")
+def get_query():
+    return send_from_directory('templates', 'query.html')
 
 @app.get("/api/tdps")
 def get_api_tdps():
