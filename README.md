@@ -1,5 +1,5 @@
 # ChatRTTETDP
-ChatErTeeTeeeeTeeDeePee
+ChatErTeeTeeeEEeeeDeeTeePee
 
 ## Setup
 ```
