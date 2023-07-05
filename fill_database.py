@@ -14,21 +14,48 @@ from itertools import chain
 from typing import List, Tuple, Dict
 import functools
 import fill_database_tests
+
 import nltk
-
-
 # nltk.download('stopwords')
 from nltk.corpus import stopwords
 sw_nltk = stopwords.words('english')
 
 
-CHARACTER_FILTER = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.,;:!?()[]{}\"'"
 
+import argparse
+parser = argparse.ArgumentParser()
+
+# Add number of TDPs to parse -n
+parser.add_argument("-n", "--number", help="Number of TDPs to parse", type=int, default=0)
+# Add flag to indicate which years to parse -y, where y is a comma separated list of years
+parser.add_argument("-y", "--years", help="Years to parse", type=str, default="")
+
+args = parser.parse_args()
+args_years_to_parse = [ int(_) for _ in args.years.split(',') ] if len(args.years) else []
+args_number_to_parse = args.number
+
+""" Load all TDPs to be parsed """
+# Blacklist because these papers don't contain loadable text. The text seems to be images or something weird..
 tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
-tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") # Blacklist because it's almost a perfect duplicate of their 2016 paper
-
+# Blacklist because it's almost a perfect duplicate of their 2016 paper
+tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") 
 tdps = U.find_all_TDPs()
 tdps = [ _ for _ in tdps if _ not in tdp_blacklist ]
+
+# Filter out years if needed
+if len(args_years_to_parse) > 0:
+    len_tdps = len(tdps)
+    tdps = [ _ for _ in tdps if int(_.split('/')[2]) in args_years_to_parse ]
+    print(f"Filtered out {len_tdps - len(tdps)}/{len_tdps} TDPs, based on year. Remaining: {len(tdps)}")
+
+# Limit number of TDPs if needed
+if args_number_to_parse > 0:
+    tdps = tdps[:args_number_to_parse]
+    print(f"Limiting number of TDPs to {args_number_to_parse}")
+
+print(f"Ready to parse {len(tdps)} TDPs")
+""""""""""""""""""""""""""""""""""""
+
 
 # tdps = [ "./TDPs/2015/2015_TDP_ACES.pdf" ]
 # tdps = ["./TDPs/2011/2011_TDP_Cyrus.pdf"] # FalseFalse
