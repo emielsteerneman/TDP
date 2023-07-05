@@ -355,7 +355,7 @@ class Database:
 				(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw, paragraph_db.id))
 			self.conn.commit()
    
-		print(f"[DB] Paragraph {paragraph_db} saved")
+		# print(f"[DB] Paragraph {paragraph_db} saved")
 
 		# Return an instance of the inserted or updated paragraph
 		return self.get_paragraph_by_rowid(cursor.lastrowid)
