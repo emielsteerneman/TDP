@@ -3,3 +3,4 @@ numpy
 PyMuPDF
 rank_bm25
 sentence-transformers
+flask
