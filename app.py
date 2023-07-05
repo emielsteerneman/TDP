@@ -5,6 +5,7 @@ from Database import instance as db_instance
 import utilities as U
 from embeddings import Embeddor as E
 import os
+from Search import instance as search_instance
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 

@@ -35,7 +35,7 @@ class Search:
         self.bm25 = BM25Okapi(tokenized_corpus)
         print(f"[Search][reload_corpus] Created BM25 model of size {self.bm25.corpus_size} ({int(1000*(time.time() - now))}ms)")
         
-    def search(self, query_:str, R:float=0.5, n:int=20):
+    def search(self, query_:str, R:float=0.5, n:int=2000):
         """ Given a query, sort all sentences by relevance
 
         Args:
@@ -70,20 +70,51 @@ class Search:
         sentence_scores = R * np.array( similarities_normalized ) + (1-R) * np.array( doc_scores_normalized )
         
         """ Return top n sentences """
-        argsort = np.argsort(sentence_scores)[::-1]
+        argsort = np.argsort(sentence_scores)[::-1][:n]
         sentences = [ self.sentences_dict[i] for i in argsort ]
         
         print(f"[Search] Completed search in {int(1000*(time.time() - time_search_start))}ms")
         print(f"[Search] Most relevant sentence: '{self.sentences_dict[argsort[0]]['text_raw']}'\n")
         
-        return sentences
+        return sentences, sentence_scores[argsort]
+    
+    def sentences_to_paragraph(self, sentences_dict:list, sentence_scores:np.array=None, n=3):
+        # paragraph_ids = list(set([ _['paragraph_id'] for _ in sentences_dict ]))
         
+        if sentence_scores is None:
+            sentence_scores = np.ones(len(sentences_dict))
+        
+        paragraph_scores = {}
+        paragraph_count = {}
+        for sentence, score in list(zip(sentences_dict, sentence_scores)):
+            pid = sentence['paragraph_id']
+            if pid not in paragraph_scores: paragraph_scores[pid] = 0
+            paragraph_scores[pid] += score
+            if pid not in paragraph_count: paragraph_count[pid] = 0
+            paragraph_count[pid] += 1
+            
+        paragraph_scores = [ [k, v / min(paragraph_count[k], 5) ] for k, v in paragraph_scores.items() ]
+        paragraph_scores.sort(key=lambda _: _[1], reverse=True)
+        for paragraph_id, score in paragraph_scores[:n]:
+            paragraph_db = db_instance.get_paragraph_by_id(paragraph_id)
+            tdp_db = db_instance.get_tdp_by_id(paragraph_db.tdp_id)
+            print("    ", score, tdp_db.year, tdp_db.team, paragraph_db.title)
+        
+        paragraph_ids = [ _[0] for _ in paragraph_scores ][:n]
+        
+        return paragraph_ids
+
 instance = Search()
 
 if __name__ == "__main__":
     print("[Search] Running search.py as main")
     
     query = "I want to know more about material for the dribbler"
-    instance.search(query, R=0)
-    instance.search(query, R=0.5)
-    instance.search(query, R=1)
+    sentences, scores = instance.search(query, R=0)
+    instance.sentences_to_paragraph(sentences, scores)
+    
+    sentences, scores = instance.search(query, R=0.5)
+    instance.sentences_to_paragraph(sentences, scores)
+    
+    sentences, scores = instance.search(query, R=1)
+    instance.sentences_to_paragraph(sentences, scores)
