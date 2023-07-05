@@ -5,6 +5,7 @@ from Database import instance as db_instance
 import utilities as U
 from embeddings import Embeddor as E
 import os
+import Search
 from Search import instance as search_instance
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -102,10 +103,28 @@ def delete_api_tdps_id_paragraphs(tdp_id, paragraph_id):
 def post_api_query():
     body = request.get_json()
     query = body['query']
-    sentences, paragraphs, tdps, query, query_words = E.query(query)
+
+    sentences, scores = search_instance.search(query, R=0.9, n=100)
+    paragraph_ids = search_instance.sentences_to_paragraphs(sentences, scores)
+    paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]
+
+    """ Sort TDPs by the importances of their sentences """
     
+    tdp_ids_by_sentence_scores = []
+    for sentence in sentences:
+        paragraph_db = db_instance.get_paragraph_by_id(sentence.paragraph_id)
+        if paragraph_db.tdp_id not in tdp_ids_by_sentence_scores:
+            tdp_ids_by_sentence_scores.append(paragraph_db.tdp_id)
+
+    # sentences, paragraphs, tdps, query, query_words = E.query(query)
+    
+    """ Convert Sentence_DB to Sentence dict which holds more information and can have the embedding removed """
     sentences = [ db_instance.get_sentence_exhaustive(s) for s in sentences ]
     for sentence in sentences: sentence.pop('embedding')
+    
+    """ Get all relevant TDPs """
+    tdp_ids = list(set([ _['tdp_id'] for _ in sentences ]))
+    tdps = [ db_instance.get_tdp_by_id(id) for id in tdp_ids ]
     
     # Group sentences by paragraph
     sentences_by_paragraph = {}
@@ -113,14 +132,10 @@ def post_api_query():
         paragraph_id = sentence['paragraph_id']
         if paragraph_id not in sentences_by_paragraph: sentences_by_paragraph[paragraph_id] = []
         sentences_by_paragraph[paragraph_id].append(sentence)
-   
-    print(sentences_by_paragraph)
-   
-        
+           
     # Group paragraph groups by tdp
     paragraphs_by_tdp = {}
     for paragraph_id, sentences in sentences_by_paragraph.items():
-        print("paragraph_id:", paragraph_id)
         tdp_id = sentences[0]['tdp_id']
         if tdp_id not in paragraphs_by_tdp: paragraphs_by_tdp[tdp_id] = {}
         paragraphs_by_tdp[tdp_id][paragraph_id] = sentences
@@ -132,10 +147,6 @@ def post_api_query():
     #     if tdp_id not in sentences_by_tdp: sentences_by_tdp[tdp_id] = []
     #     sentences_by_tdp[tdp_id].append(sentence)
     
-    print(paragraphs_by_tdp)
-    
-    
-    
     paragraphs = [ _.to_dict() for _ in paragraphs ]
     tdps = [ _.to_dict() for _ in tdps ]
     
@@ -144,8 +155,9 @@ def post_api_query():
         'sentences_by_tdp': paragraphs_by_tdp,
         'paragraphs': paragraphs,
         'tdps': tdps,
+        'tdp_order': tdp_ids_by_sentence_scores,
         'query': query,
-        'query_words': query_words
+        'query_words': Search.query_to_words(query)
     }
 
 

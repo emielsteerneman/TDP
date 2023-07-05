@@ -35,6 +35,13 @@
 
       <hr>
 
+      <div v-if="show_example_query" class="text-center">
+        <br><br><br>
+        <h2> Some example queries. Click one </h2>
+        <br>
+        <div v-for="example_query in example_queries" @click="run_example_query(example_query)" class='col-md-12' style='font-size: 24px; cursor:pointer; padding-bottom: 20px;'>{{ example_query }}</div>
+      </div>
+
 
       <!-- MAIN CONTENT -->
 
@@ -45,22 +52,23 @@
           <div class="col-md-6" style="padding-right: 20px;">
             <h2> Sentences </h2>
             <!-- For each tdp -->
-            <div v-for="(paragraphs, tdp_id) in sentences_by_tdp" class="row" style="padding-bottom: 20px">
-              
+            <div v-for="tdp_id in tdp_order">
               <div class="col-md-11">
                 <a v-bind:href="'/tdps/' + tdp_id"> {{ getTdp(tdp_id)['team'] }} {{ getTdp(tdp_id)['year'] }} </a>
+                <img style="padding-left: 10px;" v-bind:src="getLogo(tdp_id)" width=40px>
               </div>
-              
-              <!-- For each paragraph in tdp -->
-              <div v-for="(sentences, paragraph_id) in paragraphs" style="padding-left: 20px;">
-                <!-- paragraph title -->
-                <div class="col-md-11" style="font-size: 14px; font-weight: bold;" > {{ sentences[0]['paragraph_title'] }} </div>
-                <!-- For each sentence in paragraph -->
-                <div v-for="sentence in sentences" class="row">
-                  <div class="col-md-11" style="font-size: 12px;" v-html="highlight(sentence['text_raw'])"></div>
-                </div><!-- // For each sentence -->
-              </div><!-- // For each paragraph -->
 
+              <!-- For each paragraph in tdp -->
+              <div v-for="paragraphs in sentences_by_tdp[tdp_id]" class="row" style="padding-bottom: 20px">
+                
+                <div class="col-md-11" style="font-size: 14px; font-weight: bold;" > {{ paragraphs[0]['paragraph_title'] }} </div>
+
+                <div v-for="sentence in paragraphs" style="padding-left: 20px;">
+                  <!-- For each sentence in paragraph -->
+                    <div class="col-md-11" style="font-size: 12px;" v-html="highlight(sentence['text_raw'])"></div>
+                </div><!-- // For each paragraph -->
+
+              </div>
             </div><!-- // For each tdp -->
           </div><!-- End sentences-->
 
@@ -115,7 +123,7 @@
                 text = text.slice(0, index) + "<span style='background-color: yellow;'>" + text.slice(index, index + word.length) + "</span>" + text.slice(index + word.length)
             })
         })
-        return text
+        return "&#8226 " + text
     }
 
     var app = new Vue({
@@ -126,7 +134,16 @@
             sentences_by_tdp: [],
             paragraphs: [],
             tdps: [],
-            query_words: []
+            tdp_order: [],
+            query_words: [],
+            show_example_query: true,
+            example_queries: [
+              "What is a better dribbler material ? Silicon or rubber ?",
+              "Should I make my robot out of plastic of aluminum ?",
+              "I want to know more about reinforcement learning",
+              "I want to know more about the ROS framework",
+              "Are there any simulator alternatives ?",
+            ]
         },
         methods: {
             onSubmit: function(){ 
@@ -137,6 +154,7 @@
                         this.sentences_by_tdp = response.data['sentences_by_tdp']
                         this.paragraphs = response.data['paragraphs']
                         this.tdps = response.data['tdps']
+                        this.tdp_order = response.data['tdp_order'],
                         this.query_words = response.data['query_words']
                         console.log(this.query_words)
                     }
@@ -169,6 +187,15 @@
             },
             highlight: function(text){
                 return highlight_words(text, this.query_words)
+            },
+            run_example_query: function(text){
+              this.show_example_query = false
+              this.query = text
+              this.onSubmit()
+            },
+            getLogo: function(tdp_id){
+              tdp = app.getTdp(tdp_id)
+              return "/static/logos/" + tdp['team']+ ".png"
             }
         },
         mounted: function() {
