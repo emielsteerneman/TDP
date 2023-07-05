@@ -71,14 +71,7 @@ n_sentences = 0
 total_characters = 0
 sentences_all = []
 
-case1 = 0
-case2 = 0
-
-
-
-def pages_to_sentences(pages, has_page_numbers_top, has_page_numbers_bottom):
-    pass
-
+""" Utility functions"""
 
 def sentence_to_words(sentence):
     words = sentence.strip().split(" ")
@@ -97,15 +90,11 @@ def resolve_semvers(semvers:List[Semver]):
     semvers_valid = semvers_valid[1:]
     return resolve_semvers_rec(tuple(semvers_valid))
 
-resolv_i = 0
-
 # Cached recursive function
 @functools.cache
 def resolve_semvers_rec(semvers:Tuple[Semver], depth=0):
     semvers = list(semvers)
     """ find the longest possible chain of strictly followup semvers """
-    global resolv_i
-    resolv_i += 1
     
     # Custom print function, to print the depth of the recursion
     p = lambda *args, **kwargs : print(*tuple([f"[rsr][{str(resolv_i).rjust(3)}]{' | '*depth}"] + list(args)), **kwargs)
@@ -197,8 +186,7 @@ def find_paragraph_titles(sentences, force_next_needed=None):
     print(f"resolve_semvers took {time.time() - start} seconds")
     print("Longest link:", longest_chain)
     
-    return longest_chain
-    
+    return longest_chain   
     
 def sentence_can_be_paragraph_title(sentence_this, sentence_next=None):
     words = sentence_to_words(sentence_this)
@@ -226,33 +214,17 @@ def sentence_can_be_paragraph_title(sentence_this, sentence_next=None):
     
     return True, next_needed, semver
 
+""""""""""""""""""""""""
 
 
-
-
-
-
-
-# Fake sentences of 24 consecutive semvers
-# sentences = ["1.0.0", "1.0.1", "1.0.2", "1.1.0", "1.1.1", "1.2.1", "2.0.0", "2.0.1", "2.0.2", "2.1.0", "2.1.1", "2.2.1", "3.0.0", "3.0.1", "3.0.2", "3.1.0", "3.1.1", "3.2.1","4.0.0", "4.0.1", "4.0.2", "4.1.0", "4.1.1", "4.2.1", "."]
-# sentences = ["1", "2", "2.1", "2.1.1", "2", "2.1.1.1", "2.1.1.2", "2.1.1.3", "2.1.2", "2.1.2.1", "2.1.3", "2.2", "2.2.1", "2.2.2", "2.2.3", "2.3", "2.4", "2.5", "3", "3", "3.1", "3.1.1", "3.2", "3.3", "3.3.1", "3.3.2", "3.3.3", "4", "4.1", "4.2", "4.3", "4.4", "4.5", "5", "5.1", "."]
-# sentences = ["1", "2", "3", "4", "4", "4", "5", "6", "."]
-# sentences = ["1", "2", "2", "3", "."]
-# find_paragraph_titles(sentences)
-# exit()
+""" Start parsing the TDPs """
 
 log_file = open("logfile.txt", "w")
-
-
 
 for i_tdp, tdp in enumerate(tdps):
     
     print(f"\n\nReading {i_tdp} : {tdp}")
-    
-    # Add TDP to database
-    tdp_instance = U.parse_tdp_name(tdp)
-    tdp_instance = db_instance.post_tdp(tdp_instance)
-    
+        
     try:
         # Open TDP pdf with PyMuPDF        
         doc = fitz.open(tdp)
@@ -375,7 +347,11 @@ for i_tdp, tdp in enumerate(tdps):
             if fill_database_tests.test_cases[tdp] != paragraph_titles:
                 raise Exception(f"Test case failed for {tdp}!")
         
-                
+        
+        # Store TDP
+        tdp_instance = U.parse_tdp_name(tdp)
+        tdp_instance = db_instance.post_tdp(tdp_instance)
+        
         for paragraph_title, paragraph in zip(paragraph_titles, paragraph_sentences):
             
             # TODO maybe improve excessive "\n".join() and .splitlines() calls
@@ -443,14 +419,14 @@ for i_tdp, tdp in enumerate(tdps):
             sentences, sentences_processed = sentences_sentences_processed
             
             ### Store everything in the database
-            # store paragraph
+                        
+            # Store paragraph
             paragraph_db = Database.Paragraph_db(tdp_id=tdp_instance.id, title=paragraph_title, text=text, text_raw=text_raw)
             paragraph_db = db_instance.post_paragraph(paragraph_db)
 
             # Calculate embeddings
             embeddings = [ E.embed(sentence) for sentence in sentences ]
             # embeddings = [ np.zeros(10) for sentence in sentences ]
-            
             
             # Store sentences
             sentences_db = [ Database.Sentence_db(text=sentence_processed, text_raw=sentence, embedding=embedding, paragraph_id=paragraph_db.id) for sentence, sentence_processed, embedding in zip(sentences, sentences_processed, embeddings)]
@@ -464,7 +440,3 @@ for i_tdp, tdp in enumerate(tdps):
 
 print(f"Total sentences: {n_sentences}")
 print(f"Total characters: {total_characters}")
-    
-print(f"Case 1: {case1}")
-print(f"Case 2: {case2}")
-    
