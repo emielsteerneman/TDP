@@ -3,7 +3,7 @@ import Database
 from Database import instance as db_instance
 
 import nltk
-# nltk.download('stopwords')
+nltk.download('stopwords')
 from nltk.corpus import stopwords
 sw_nltk = stopwords.words('english')
 
