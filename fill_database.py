@@ -255,6 +255,7 @@ for i_tdp, tdp in enumerate(tdps):
         # Remove empty sentences
         sentences_per_page = [ [_ for _ in page if _] for page in sentences_per_page ]
                
+        """ Pagenumber removal """       
         # Check if pdf has page numbers, but only on the odd pages. On even pages, it might go wrong
         # Example of a pdf that goes wrong: 2022_TDP_RoboJackets.pdf page 3: "RoboJackets 2022 Team Description Paper 3"
         has_pagenumbers_top    = all( [ sentences[ 0].strip().isnumeric() for sentences in sentences_per_page[1::2] ] )
@@ -263,28 +264,17 @@ for i_tdp, tdp in enumerate(tdps):
         print(f"  Has page numbers top:    {has_pagenumbers_top}")
         print(f"  Has page numbers bottom: {has_pagenumbers_bottom}")
         
-        # for i_page, sentences in enumerate(sentences_per_page):
-        #     print(i_page, "  ||  ", sentences[0], "  ||  ", sentences[-1])
-                
         if has_pagenumbers_top and not has_pagenumbers_bottom:
-            # popped = [ sentences.pop(0) for sentences in sentences_per_page[1::] ]
             for i_page in range(1, len(sentences_per_page)):
                 while str(i_page+1) != (popped := sentences_per_page[i_page].pop(0)):
-                    print("popped", popped)
-                print("popped", popped)
-            # print("popped:", popped)
+                    pass
         
         if has_pagenumbers_bottom and has_pagenumbers_top:
             [ sentences.pop(-1) for sentences in sentences_per_page[::2] ]
         
         if has_pagenumbers_bottom and not has_pagenumbers_top:
             [ sentences.pop(-1) for sentences in sentences_per_page ]
-        
-        
-        print("\n\n")
-        # for i_page, sentences in enumerate(sentences_per_page):
-        #     print(i_page, "  ||  ", sentences[0], "  ||  ", sentences[-1])
-        
+        """ Pagenumber removal done """
         
         
         # Flatten the list of sentences
@@ -308,9 +298,7 @@ for i_tdp, tdp in enumerate(tdps):
             elif 0.7 < fraction_true: semver_search_list = find_paragraph_titles(sentences, force_next_needed=True)
             else:
                 log_file.write(f"Can't figure out {tdp}\n")
-                print("Can't seem to figure out paragraph titles. Skipping this TDP")
-                # exit()
-            
+                            
                 print(f"\nsemver_search_list of length {len(semver_search_list)}")
                 for semver_search in semver_search_list:
                     i = semver_search.i_sentence
@@ -320,12 +308,12 @@ for i_tdp, tdp in enumerate(tdps):
                     d = sentences[i+1] if semver_search.next_needed else ""
                     print(f" {a} {b} - {c}")
                     log_file.write(f" {a} {b} - {c}\n")
+                print(f"Can't seem to figure out paragraph titles. Skipping tdp {tdp}")
                 print("\n\n\n\n")
                 continue
 
         
         # Split into paragraph titles and sentences
-
         paragraph_sentences = []
         indices = [0] + [_.i_sentence for _ in semver_search_list] + [len(sentences)]
         for a, b in list(zip(indices, indices[1:])):
@@ -339,9 +327,7 @@ for i_tdp, tdp in enumerate(tdps):
         if len(indices): paragraph_sentences[-1] = paragraph_sentences[-1][:indices[0]]
        
         paragraph_titles = [ _.title for _ in semver_search_list ]
-        
-        print(paragraph_titles)
-        
+                
         # ==== Test case ==== #
         if tdp in fill_database_tests.test_cases:
             if fill_database_tests.test_cases[tdp] != paragraph_titles:
