@@ -38,7 +38,7 @@ class Search:
         self.bm25 = BM25Okapi(tokenized_corpus)
         print(f"[Search][reload_corpus] Created BM25 model of size {self.bm25.corpus_size} ({int(1000*(time.time() - now))}ms)")
         
-    def search(self, query_:str, R:float=0.5, n:int=2000):
+    def search(self, query_:str, R:float=0.5, n:int=2000, score_threshold:float=0.1):
         """ Given a query, sort all sentences by relevance
 
         Args:
@@ -49,7 +49,7 @@ class Search:
         time_search_start = time.time()
         
         query = make_query(query_)
-        print(f"[Search] Searching with R={R} for '{query_}'")
+        print(f"[Search] Searching with R={R}, T={score_threshold} for '{query_}'")
         print(f"[Search] '{query}'")
         
         query_embedding = E.embed(query)
@@ -66,8 +66,8 @@ class Search:
         print(f"[Search] Calculated {len(doc_scores)} doc scores ({int(1000*(time.time() - now))}ms)")
        
         """ Process results """
-        similarities_normalized = (similarities - np.min(similarities)) / (np.max(similarities) - np.min(similarities))
-        doc_scores_normalized = (doc_scores - np.min(doc_scores)) / (np.max(doc_scores) - np.min(doc_scores))
+        similarities_normalized = similarities #= (similarities - np.min(similarities)) / (np.max(similarities) + 0.00001 - np.min(similarities))
+        doc_scores_normalized = (doc_scores - np.min(doc_scores)) / (np.max(doc_scores) + 0.00001 - np.min(doc_scores))
 
         """ Print top 3 results of both"""
         print("\n[Search] Top 3 context results")
@@ -85,11 +85,16 @@ class Search:
         sentence_scores = R * np.array( similarities_normalized ) + (1-R) * np.array( doc_scores_normalized )
         
         """ Return top n sentences """
-        argsort = np.argsort(sentence_scores)[::-1][:n]
-        sentences = [ self.sentences_db[i] for i in argsort ]
+        argsort = np.argsort(sentence_scores)[::-1][:n]                          # Sort scores
+        argsort = [ _ for _ in argsort if sentence_scores[_] > score_threshold ] # Filter by score threshold
+        sentences = [ self.sentences_db[i] for i in argsort ]                    # Get sentences
         
         print(f"[Search] Completed search in {int(1000*(time.time() - time_search_start))}ms")
-        print(f"[Search] Most relevant sentence: '{self.sentences_db[argsort[0]].text_raw}'\n")
+        if(len(argsort)):
+            print(f"[Search] Most relevant sentence: '{self.sentences_db[argsort[0]].text_raw}'\n")
+        else:
+            print(f"[Search] No relevant sentences found\n")
+            
         
         return sentences, sentence_scores[argsort]
     
