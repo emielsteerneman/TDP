@@ -7,10 +7,21 @@ from Embeddings import Embeddor as E
 import os
 import Search
 from Search import instance as search_instance
+from telegram import Bot
+import asyncio
+import time
+import threading
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
 E.set_sentences(db_instance.get_sentences())
+
+# Create telegram bot
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+bot = Bot(token=TELEGRAM_TOKEN)
+
+query_log_file = open("query_log_file.txt", "a")
 
 @app.route('/TDPs/<year>/<filename>')
 def download_file(year, filename):
@@ -50,6 +61,11 @@ def tdps(request, groupby=None):
         return render_template('tdps.html', data=years, groupby=groupby)
 
     return render_template('tdps.html', data=tdps, groupby=groupby)
+
+def send_to_telegram(text):
+    coroutine = bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
+    asyncio.set_event_loop(asyncio.SelectorEventLoop())
+    asyncio.get_event_loop().run_until_complete(coroutine)
 
 @app.get("/")
 def hello():
@@ -104,10 +120,10 @@ def post_api_query():
     body = request.get_json()
     query = body['query']
 
-    sentences, scores = search_instance.search(query, R=0.9, n=100)
+    sentences, scores = search_instance.search(query, R=0.9, n=100, score_threshold=0.25)
     paragraph_ids = search_instance.sentences_to_paragraphs(sentences, scores)
     paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]
-
+    
     """ Sort TDPs by the importances of their sentences """
     
     tdp_ids_by_sentence_scores = []
@@ -135,10 +151,10 @@ def post_api_query():
            
     # Group paragraph groups by tdp
     paragraphs_by_tdp = {}
-    for paragraph_id, sentences in sentences_by_paragraph.items():
-        tdp_id = sentences[0]['tdp_id']
+    for paragraph_id, sentences_ in sentences_by_paragraph.items():
+        tdp_id = sentences_[0]['tdp_id']
         if tdp_id not in paragraphs_by_tdp: paragraphs_by_tdp[tdp_id] = {}
-        paragraphs_by_tdp[tdp_id][paragraph_id] = sentences
+        paragraphs_by_tdp[tdp_id][paragraph_id] = sentences_
     
     # # Group sentences by tdp
     # sentences_by_tdp = {}
@@ -150,6 +166,24 @@ def post_api_query():
     paragraphs = [ _.to_dict() for _ in paragraphs ]
     tdps = [ _.to_dict() for _ in tdps ]
     
+    # Send results to telegram
+    telegram_time = time.time()
+    message = f"Query: \"{query}\"\n\n"
+    message += "Top 3 results:\n\n"
+    for i in range(3):
+        if len(sentences) <= i: break
+        sentence = sentences[i]
+        tdp = next(tdp for tdp in tdps if tdp['id'] == sentence['tdp_id'])
+        message += f"{i} ({scores[i]:.2f}): {tdp['team']} {tdp['year']}\n {sentence['text_raw']} {sentence['text_raw']}\n\n"
+    
+    thread = threading.Thread(target=send_to_telegram, args=[message])
+    thread.start()
+    
+    query_log_file.write(message)
+    query_log_file.flush()
+    
+    print(f"Sent message to telegram in {time.time() - telegram_time:.2f}s")
+
     return {
         'sentences': sentences,
         'sentences_by_tdp': paragraphs_by_tdp,
@@ -159,9 +193,6 @@ def post_api_query():
         'query': query,
         'query_words': Search.query_to_words(query)
     }
-
-
-
 
 @app.post("/tdps/<id>")
 def post_tdps_id(id):
