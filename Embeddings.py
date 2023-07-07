@@ -2,6 +2,7 @@ import numpy as np
 import Database
 from Database import instance as db_instance
 
+print("[Embeddings.py] Importing ntlk")
 import nltk
 nltk.download('stopwords')
 from nltk.corpus import stopwords
@@ -9,13 +10,14 @@ sw_nltk = stopwords.words('english')
 
 class Embeddings:
     def __init__(self):
-        print("[embeddings.py] Importing packages...")
+        print("[Embeddings.py] Importing sentence_transformers")
         from sentence_transformers import SentenceTransformer
 
-        print("[embeddings.py] Loading model 'sentence-transformers/all-mpnet-base-v2'...")
+        print("[Embeddings.py] Loading model 'sentence-transformers/all-mpnet-base-v2'")
         self.model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 
         self.dbsentences:list[Database.Sentence_db] = None
+        print("[Embeddings.py] Embeddings initialized")
 
     def cosine_similarity(self, a, b):
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
@@ -24,7 +26,7 @@ class Embeddings:
         return self.model.encode(text)
     
     def set_sentences(self, dbsentences):
-        print(f"[embeddings.py] Setting database {len(dbsentences)} sentences...")
+        print(f"[Embeddings.py] Setting database {len(dbsentences)} sentences...")
         self.dbsentences = dbsentences
     
     def get_similar_sentences(self, query_embedding:np.array, n=5) -> tuple[list[Database.Sentence_db], list[Database.Paragraph_db], list[Database.TDP_db]]:
@@ -48,7 +50,7 @@ class Embeddings:
         paragraph_occurences = [ [k, v] for k, v in paragraph_occurences.items() ]
         # Sort occurences
         paragraph_occurences.sort(key=lambda _: _[1], reverse=True)
-        print("[embeddings.py][gss] paragraph_occurences", paragraph_occurences)
+        print("[Embeddings.py][gss] paragraph_occurences", paragraph_occurences)
 
         # Get all paragraphs
         paragraphs = [ db_instance.get_paragraph_by_id(paragraph_id) for paragraph_id, _ in paragraph_occurences ]
@@ -64,10 +66,10 @@ class Embeddings:
 
     def query(self, sentence_:str):
         sentence = sentence_
-        print(f"[embeddings.py] Querying '{sentence}'")
+        print(f"[Embeddings.py] Querying '{sentence}'")
         words = [ word for word in sentence.lower().split(' ') if word not in sw_nltk ]
         sentence = " ".join(words)
-        print(f"[embeddings.py] Cleaned up '{sentence}'")
+        print(f"[Embeddings.py] Cleaned up '{sentence}'")
         query_embedding = self.embed(sentence)
         return *self.get_similar_sentences(query_embedding), sentence_, words
 
