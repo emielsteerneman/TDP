@@ -224,7 +224,7 @@ class Database:
 		''')
 		
 		self.conn.commit()
-		print("[DB] Table created")
+		print("[DB] Database initialized")
   
 	""" TDPs """
 
