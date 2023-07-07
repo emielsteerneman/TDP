@@ -35,6 +35,12 @@
 
       <hr>
 
+      <div class="row" v-if="!sentences.length && query.length && !show_example_query"> 
+        <div class="col-md-12 text-center" style='font-size: 24px;'>
+          No relevant information found for "{{ latest_query }}"
+        </div>
+      </div>
+
       <div v-if="show_example_query" class="text-center">
         <br><br><br>
         <h2> Some example queries. Click one </h2>
@@ -143,11 +149,13 @@
               "I want to know more about reinforcement learning",
               "I want to know more about the ROS framework",
               "Are there any simulator alternatives ?",
-            ]
+            ],
+            latest_query: ""
         },
         methods: {
             onSubmit: function(){
               this.show_example_query = false 
+              this.latest_query = this.query
               postQuery(
                   this.query,
                   response => {
