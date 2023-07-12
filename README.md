@@ -7,6 +7,7 @@ The search engine can be found on our website, https://tdp.roboteamtwente.nl/que
 
 ## Future plans
 - Adding the 2023 papers
+- Adding the SSL [scientific publications](https://ssl.robocup.org/scientific-publications/)
 - Better (E)TDP paragraph extraction by using also e.g. font size
 - Discord bot
 - ChatGPT integration
@@ -23,5 +24,5 @@ $ flask run
 
 ## Docker
 ```
-$ docker run -p 5000:5000 roboteamtwente/chatrttetdp:latest
+$ docker run -d -p 5000:5000 roboteamtwente/chatrttetdp:latest
 ```
