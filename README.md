@@ -5,6 +5,14 @@ We are all working towards the same goal: winning the World Championship of HUMA
 
 The search engine can be found on our website, https://tdp.roboteamtwente.nl/query. Also check out our Wiki https://wiki.roboteamtwente.nl/ and of course all our open-sourced software https://github.com/RoboTeamTwente/roboteam.
 
+## Future plans
+- Adding the 2023 papers
+- Better (E)TDP paragraph extraction by using also e.g. font size
+- Discord bot
+- ChatGPT integration
+- Image search
+- Graph of which (E)TDPs reference which
+
 ## Setup
 ```
 $ pip install -r requirements.txt
@@ -14,4 +22,6 @@ $ flask run
 ```
 
 ## Docker
+```
 $ docker run -p 5000:5000 roboteamtwente/chatrttetdp:latest
+```
