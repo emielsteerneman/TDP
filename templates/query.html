@@ -58,15 +58,21 @@
 
       <hr>
 
-      <div class="row" v-if="!search_in_progress && !sentences.length && latest_query.length && !show_example_query"> 
+      <div class="row" v-if="!search_in_progress && !sentences.length && !server_error && latest_query.length && !show_example_query"> 
         <div class="col-md-12 text-center" style='font-size: 24px;'>
           No relevant information found for "{{ latest_query }}"
         </div>
       </div>
 
-      <div class="row" v-if="search_in_progress"> 
+      <div class="row" v-if="search_in_progress && !server_error"> 
         <div class="col-md-12 text-center" style='font-size: 24px;'>
-          Searching for "{{ latest_query }}.."
+          Searching for "{{ latest_query }}"..
+        </div>
+      </div>
+
+      <div class="row" v-if="server_error">
+        <div class="col-md-12 text-center" style='font-size: 24px;'>
+          Server error. Please contact me or create an issue on <a href="https://github.com/emielsteerneman/TDP/issues"> Github <img src="/static/github.png" width=20px></a>
         </div>
       </div>
 
@@ -144,10 +150,12 @@
       return indices;
     }
 
-    function postQuery(query, callback){
+    function postQuery(query, callback, callback_error){
         axios.post("/api/query", {
             query: query
-        }).then(callback)
+        })
+        .then(callback)
+        .catch(callback_error)
     }
 
     function highlight_words(text, words){
@@ -181,7 +189,8 @@
               "Are there any simulator alternatives ?",
             ],
             latest_query: "",
-            search_in_progress: false
+            search_in_progress: false,
+            server_error: false
         },
         methods: {
             onSubmit: function(){
@@ -199,6 +208,10 @@
                       this.query_words = response.data['query_words']
                       this.search_in_progress = false
                       console.log(this.query_words)
+                  },
+                  error => {
+                      this.search_in_progress = false
+                      this.server_error = true
                   }
               )
             },
