@@ -1,5 +1,9 @@
 print("[Search] Initializing search.py")
 
+import re
+import time 
+
+import numpy as np
 import nltk
 nltk.download('stopwords')
 from nltk.corpus import stopwords
@@ -8,12 +12,14 @@ sw_nltk = stopwords.words('english')
 import Database
 from Database import instance as db_instance
 from Embeddings import Embeddor as E
-import time 
 from rank_bm25 import BM25Okapi
-import numpy as np
 
 def query_to_words(text:str):
-    return [ word for word in text.lower().split(' ') if word not in sw_nltk ]
+    # Remove any character that is not alphanumeric, dash, underscore, or space
+    text = re.sub('[\W-_ ]+', '', text)
+    # Take every word that is not a stopword
+    words = [ word for word in text.lower().split(' ') if word not in sw_nltk and len(word) ]
+    return words
 
 def filter_stopwords(text:str):
     return " ".join(query_to_words(text))
