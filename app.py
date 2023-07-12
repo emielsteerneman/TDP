@@ -16,10 +16,13 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 
 E.set_sentences(db_instance.get_sentences())
 
-# Create telegram bot
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-bot = Bot(token=TELEGRAM_TOKEN)
+bot = None
+if os.getenv('TELEGRAM_TOKEN') is not None and os.getenv('TELEGRAM_CHAT_ID') is not None:
+    # Create telegram bot
+    TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+    TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+    bot = Bot(token=TELEGRAM_TOKEN)
+    print("[app] Created telegram bot")
 
 query_log_file = open("query_log_file.txt", "a")
 
@@ -63,6 +66,7 @@ def tdps(request, groupby=None):
     return render_template('tdps.html', data=tdps, groupby=groupby)
 
 def send_to_telegram(text):
+    if bot is None: return
     coroutine = bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
     asyncio.set_event_loop(asyncio.SelectorEventLoop())
     asyncio.get_event_loop().run_until_complete(coroutine)
@@ -91,7 +95,7 @@ def get_api_tdps():
 @app.get("/api/tdps/<tdp_id>/paragraphs")
 def get_api_tdps_id_paragraphs(tdp_id):
     tdp = db_instance.get_tdp_by_id(tdp_id)
-    print("Retrieving paragraphs for TDP", tdp.filename)
+    print("[app] Retrieving paragraphs for TDP", tdp.filename)
     
     paragraphs = db_instance.get_paragraphs_by_tdp(Database.TDP_db(id=tdp_id))
     return [ paragraph.to_dict() for paragraph in paragraphs ]
@@ -120,7 +124,7 @@ def post_api_query():
     body = request.get_json()
     query = body['query']
 
-    sentences, scores = search_instance.search(query, R=0.9, n=100, score_threshold=0.25)
+    sentences, scores = search_instance.search(query, R=0.1, n=100, score_threshold=0.25)
     paragraph_ids = search_instance.sentences_to_paragraphs(sentences, scores)
     paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]
     
@@ -182,7 +186,7 @@ def post_api_query():
     query_log_file.write(message)
     query_log_file.flush()
     
-    print(f"Sent message to telegram in {time.time() - telegram_time:.2f}s")
+    print(f"[app] Sent message to telegram in {time.time() - telegram_time:.2f}s")
 
     return {
         'sentences': sentences,
@@ -196,8 +200,6 @@ def post_api_query():
 
 @app.post("/tdps/<id>")
 def post_tdps_id(id):
-    print(request.form)
-    
     # Store text from field 'textfield' in database
     text = request.form.get('textfield')
     db_instance.post_text(id, text)
