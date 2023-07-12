@@ -55,9 +55,15 @@
 
       <hr>
 
-      <div class="row" v-if="!sentences.length && query.length && !show_example_query"> 
+      <div class="row" v-if="!search_in_progress && !sentences.length && latest_query.length && !show_example_query"> 
         <div class="col-md-12 text-center" style='font-size: 24px;'>
           No relevant information found for "{{ latest_query }}"
+        </div>
+      </div>
+
+      <div class="row" v-if="search_in_progress"> 
+        <div class="col-md-12 text-center" style='font-size: 24px;'>
+          Searching for "{{ latest_query }}.."
         </div>
       </div>
 
@@ -171,10 +177,12 @@
               "I want to know more about the ROS framework",
               "Are there any simulator alternatives ?",
             ],
-            latest_query: ""
+            latest_query: "",
+            search_in_progress: false
         },
         methods: {
             onSubmit: function(){
+              this.search_in_progress = true
               this.show_example_query = false 
               this.latest_query = this.query
               postQuery(
@@ -186,6 +194,7 @@
                       this.tdps = response.data['tdps']
                       this.tdp_order = response.data['tdp_order'],
                       this.query_words = response.data['query_words']
+                      this.search_in_progress = false
                       console.log(this.query_words)
                   }
               )
