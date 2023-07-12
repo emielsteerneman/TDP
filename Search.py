@@ -16,7 +16,7 @@ from rank_bm25 import BM25Okapi
 
 def query_to_words(text:str):
     # Remove any character that is not alphanumeric, dash, underscore, or space
-    text = re.sub('[\W-_ ]+', '', text)
+    text = re.sub('[\W_]+', ' ', text)
     # Take every word that is not a stopword
     words = [ word for word in text.lower().split(' ') if word not in sw_nltk and len(word) ]
     return words
