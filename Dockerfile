@@ -20,12 +20,15 @@ WORKDIR /app
 COPY TDPs/ TDPs/
 COPY database.db database.db
 
+#RUN python3 download_tdps.py
+#RUN python3 fill_database.py
+
+# Open up Flask port
+EXPOSE 5000
+
 # Force rebuilding from the 'git pull' layer if there have been new commits
 # https://stackoverflow.com/questions/56945125/force-docker-to-rebuild-a-layer-based-on-latest-commit-of-a-git-repo
 ADD https://api.github.com/repos/emielsteerneman/TDP/git/refs/heads/master version.json
 RUN git pull
-
-#RUN python3 download_tdps.py
-#RUN python3 fill_database.py
 
 ENTRYPOINT python3 app.py
