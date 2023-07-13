@@ -66,20 +66,22 @@ class TDP_db:
 
 class Paragraph_db:
 	""" Class that represents a paragraph in the database """
-	def __init__(self, id:int=None, tdp_id:int=None, title:str=None, text:str=None, text_raw:str=None) -> None:
+	def __init__(self, id:int=None, tdp_id:int=None, title:str=None, text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None) -> None:
 		self.id = id
 		self.tdp_id = tdp_id
 		self.title = title
-		self.text = text
 		self.text_raw = text_raw
+		self.text_processed = text_processed
+		self.embedding = embedding
 
 	""" Copy all fields from other paragraph to this paragraph if fields in this paragraph are None"""
 	def merge(self, other:Paragraph_db) -> None:
 		if self.id is None: self.id = other.id
 		if self.tdp_id is None: self.tdp_id = other.tdp_id
 		if self.title is None: self.title = other.title
-		if self.text is None: self.text = other.text
 		if self.text_raw is None: self.text_raw = other.text_raw
+		if self.text_processed is None: self.text_processed = other.text_processed
+		if self.embedding is None: self.embedding = other.embedding
 
 	""" Convert paragraph to dict """
 	def to_dict(self) -> dict:
@@ -87,9 +89,16 @@ class Paragraph_db:
 			"id": self.id,
 			"tdp_id": self.tdp_id,
 			"title": self.title,
-			"text": self.text,
-			"text_raw": self.text_raw
+			"text_raw": self.text_raw,
+			"text_processed": self.text_processed,
+			"embedding": self.embedding
 		}
+
+	""" Special case of dict that can be converted to json, by removing the np.array embedding """
+	def to_json_dict(self) -> str:
+		dict_ = self.to_dict()
+		dict_.pop("embedding")
+		return dict_
 
 	@staticmethod
 	def from_dict(paragraph:dict) -> Paragraph_db:
@@ -97,8 +106,9 @@ class Paragraph_db:
 			id=paragraph["id"],
 			tdp_id=paragraph["tdp_id"],
 			title=paragraph["title"],
-			text=paragraph["text"],
-			text_raw=paragraph["text_raw"]
+			text_raw=paragraph["text_raw"],
+			text_processed=paragraph["text_processed"],
+			embedding=paragraph["embedding"]
 		)
   
 	def __str__(self) -> str:
@@ -109,19 +119,19 @@ class Paragraph_db:
  
 class Sentence_db:
 	""" Class that represents a sentence in the database """
-	def __init__(self, id:int=None, paragraph_id:int=None, text:str=None, text_raw:str=None, embedding:np.ndarray=None) -> None:
+	def __init__(self, id:int=None, paragraph_id:int=None, text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None) -> None:
 		self.id = id
 		self.paragraph_id = paragraph_id
-		self.text = text
 		self.text_raw = text_raw
+		self.text_processed = text_processed
 		self.embedding = embedding
 
 	""" Copy all fields from other sentence to this sentence if fields in this sentence are None"""
 	def merge(self, other:Sentence_db) -> None:
 		if self.id is None: self.id = other.id
 		if self.paragraph_id is None: self.paragraph_id = other.paragraph_id
-		if self.text is None: self.text = other.text
 		if self.text_raw is None: self.text_raw = other.text_raw
+		if self.text_processed is None: self.text = other.text_processed
 		if self.embedding is None: self.embedding = other.embedding
 
 	""" Convert sentence to dict """
@@ -129,8 +139,8 @@ class Sentence_db:
 		return {
 			"id": self.id,
 			"paragraph_id": self.paragraph_id,
-			"text": self.text,
 			"text_raw": self.text_raw,
+			"text_processed": self.text_processed,
 			"embedding": self.embedding
 		}
 
@@ -145,15 +155,15 @@ class Sentence_db:
 		return Sentence_db(
 			id=sentence["id"],
 			paragraph_id=sentence["paragraph_id"],
-			text=sentence["text"],
 			text_raw=sentence["text_raw"],
+			text_processed=sentence["text_processed"],
 			embedding=sentence["embedding"]
 		)
 
 	def __str__(self) -> str:
-		text_short = self.text[:10] + " ... " + self.text[-10:] if len(self.text) > 25 else self.text
 		text_raw_short = self.text_raw[:10] + " ... " + self.text_raw[-10:] if len(self.text_raw) > 25 else self.text_raw
-		return f"Sentence_db(id={self.id}, paragraph_id={self.paragraph_id}, text='{text_short}', text_raw='{text_raw_short}')"	
+		text_processed_short = self.text_processed[:10] + " ... " + self.text_processed[-10:] if len(self.text_processed) > 25 else self.text_processed
+		return f"Sentence_db(id={self.id}, paragraph_id={self.paragraph_id}, text='{text_raw_short}', text_raw='{text_processed_short}')"	
   	
 	def __dict__(self):
 		return self.to_dict()
@@ -167,7 +177,7 @@ class Database:
 		# Converts TEXT to np.array when selecting
 		sqlite3.register_converter("NP_ARRAY", convert_array)
 
-		self.conn = sqlite3.connect('database.db', check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
+		self.conn = sqlite3.connect('database2.db', check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
 		self.conn.row_factory = dict_factory
 		print("[DB] Database opened")
 
@@ -188,8 +198,9 @@ class Database:
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				tdp_id INTEGER NOT NULL,
 				title TEXT NOT NULL DEFAULT '',
-				text TEXT NOT NULL DEFAULT '',
 				text_raw TEXT NOT NULL DEFAULT '',
+				text_processed TEXT NOT NULL DEFAULT '',
+    			embedding NP_ARRAY NOT NULL,
 				FOREIGN KEY (tdp_id) REFERENCES tdps (id)
 			)
 		''')
@@ -198,31 +209,13 @@ class Database:
 			CREATE TABLE IF NOT EXISTS sentences (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				paragraph_id INTEGER NOT NULL,
-				text TEXT NOT NULL,
 				text_raw TEXT NOT NULL,
+				text_processed TEXT NOT NULL,
 				embedding NP_ARRAY NOT NULL,
 				FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
 			)
 		''')
-		# Create database with tags
-		self.conn.execute('''
-			CREATE TABLE IF NOT EXISTS tags (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				tag TEXT NOT NULL UNIQUE,
-				embedding NP_ARRAY NOT NULL
-			)
-		''')
-		# Create database that connects tags and paragraphs
-		self.conn.execute('''
-			CREATE TABLE IF NOT EXISTS tag_paragraph (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				tag_id INTEGER NOT NULL,
-				paragraph_id INTEGER NOT NULL,
-				FOREIGN KEY (tag_id) REFERENCES tags (id),
-				FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
-			)
-		''')
-		
+
 		self.conn.commit()
 		print("[DB] Database initialized")
   
@@ -330,15 +323,16 @@ class Database:
 		if paragraph_db.id is None:
 			# Execute insert query. If UNIQUE constraint is violated, return the existing entry. Otherwise, raise exception.
 			try:
-				cursor.execute('''INSERT INTO paragraphs (tdp_id, title, text, text_raw) VALUES (?, ?, ?, ?)''', 
-					(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw))
+				cursor.execute('''INSERT INTO paragraphs (tdp_id, title, text_raw, text_processed, embedding) VALUES (?, ?, ?, ?, ?)''', 
+					(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text_raw, paragraph_db.text_processed, paragraph_db.embedding))
 				self.conn.commit()
 			except sqlite3.IntegrityError as e:
+				# TODO should never happen since currently no UNIQUE constraint is defined for paragraphs
 				if "UNIQUE constraint failed" in str(e):
 					print(f"[DB] Paragraph already exists: {paragraph_db}")
 					# Entry already exists. Return the existing entry
-					paragraph = self.conn.execute('''SELECT * FROM paragraphs WHERE tdp_id = ? AND title = ? AND text = ? AND text_raw = ?''',
-						(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw)).fetchone()
+					paragraph = self.conn.execute('''SELECT * FROM paragraphs WHERE tdp_id = ? AND title = ? AND text_raw = ? AND text_processed = ?''',
+						(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text_raw, paragraph_db.text_processed)).fetchone()
 					return Paragraph_db.from_dict(paragraph)
 				else:
 					print(f"[DB] IntegrityError: {e}")
@@ -351,8 +345,8 @@ class Database:
 			# Then merge the old paragraph with the new paragraph
 			paragraph_db.merge(paragraph_db_old)
 			# Execute update query
-			cursor.execute('''UPDATE paragraphs SET tdp_id = ?, title = ?, text = ?, text_raw = ? WHERE id = ?''', 
-				(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text, paragraph_db.text_raw, paragraph_db.id))
+			cursor.execute('''UPDATE paragraphs SET tdp_id = ?, title = ?, text_raw = ?, text_processed = ?, embedding = ? WHERE id = ?''', 
+				(paragraph_db.tdp_id, paragraph_db.title, paragraph_db.text_raw, paragraph_db.text_processed, paragraph_db.embedding, paragraph_db.id))
 			self.conn.commit()
    
 		# print(f"[DB] Paragraph {paragraph_db} saved")
@@ -436,14 +430,19 @@ class Database:
 		cursor = self.conn.cursor()
 		sentence_ids = []
 		for sentence_db in sentences_db:
-			cursor.execute('''INSERT INTO sentences (paragraph_id, text, text_raw, embedding) VALUES (?, ?, ?, ?)''',
-				(sentence_db.paragraph_id, sentence_db.text, sentence_db.text_raw, sentence_db.embedding))
+			cursor.execute('''INSERT INTO sentences (paragraph_id, text_raw, text_processed, embedding) VALUES (?, ?, ?, ?)''',
+				(sentence_db.paragraph_id, sentence_db.text_raw, sentence_db.text_processed, sentence_db.embedding))
 			sentence_ids.append(cursor.lastrowid)
 		self.conn.commit()
   
 		# Return instances of all inserted sentences
 		# TODO: This is not very efficient, but it works for now
 		return [self.get_sentence(Sentence_db(id=sentence_id)) for sentence_id in sentence_ids]
+
+	def execute_query(self, query):
+		cursor = self.conn.cursor()
+		cursor.execute(query)
+		return cursor.fetchall()
 
 
 instance = Database()
