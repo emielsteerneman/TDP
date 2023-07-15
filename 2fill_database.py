@@ -1,6 +1,8 @@
 import fitz
 import numpy as np
 import re
+import time
+import os 
 
 import Database
 from Database import instance as db_instance
@@ -30,12 +32,13 @@ TODO:
     1. Filter out black images that sometimes seem to be underneath normal images (ACER 2015) (CMDragons 2014)
     2. Find image descirption not only on sentence breaks but also on font changes (ACES 2015)
     3. DONE Fix weird FF thing (CMDragons 2014 page 15, "The offense ratio")
-    4. Some images are not detected by PyMuPDF (CMDragons 2014 page 14)
+    4. Some images are not detected by PyMuPDF (CMDragons 2014 page 14) (2015 RoboDragons figure 6 7 8)
     5. Change groupby_... to mergeby_... Would make the code simpler
     6. Extract references
     7. Fix finding image descriptions when multiple images are next to and underneath each other on the same page (Skuba 2012)
     8. Deal with figure description above figure instead of below (Thunderbots 2015)
     9. Deal with bold text that are clearly paragraph headers but do not have a Semver in front of them (Thunderbots 2015)
+   10. Deal with weird unicode characters (OMID 2020, 4.1 Decisoin layer 'score') 
 """
 
 """
@@ -79,6 +82,8 @@ def extract_images_and_sentences(doc:fitz.Document) -> tuple[list[Sentence], lis
             # Add lines
                 for lines in block["lines"]:  # iterate through the text lines
                     for span in lines["spans"]:  # iterate through the text spans
+                        # Replace weird characters that python can't really deal with (OMID 2020 4.1 'score')
+                        span['text'] = span['text'].encode("ascii", errors="ignore").decode()
                         # Replace all whitespace with a single space, and remove leading and trailing whitespace
                         span['text'] = re.sub(r"\s+", " ", span['text']).strip()
                         # Filter out sentences that are now empty (yes it happens) (ACES 2015)
@@ -91,7 +96,17 @@ def extract_images_and_sentences(doc:fitz.Document) -> tuple[list[Sentence], lis
     
     return sentences, images
 
-def match_image_with_sentences(image:list, sentences:list[Sentence]) -> list[Sentence]:
+def store_image(image:Image, filepath:str) -> None:
+    extension = image['ext']
+    if 101 < len(filepath): filepath = filepath[:64] + "___" + filepath[-34:]
+    if not filepath.endswith(extension): 
+        filepath += "." + extension
+    with open(filepath, "wb") as file:
+        file.write(image['image'])
+    return filepath
+    
+def match_image_with_sentences(image:list, sentences:list[Sentence], images:list[Image] = []) -> tuple[list[Sentence], int]:
+    # print(f"[match_image_with_sentences] {image['id']}")
     # Find all sentenecs on the same page as the image
     page:int = image['page']
     sentences = [ _ for _ in sentences if _['page'] == page ]
@@ -101,26 +116,60 @@ def match_image_with_sentences(image:list, sentences:list[Sentence]) -> list[Sen
     image_bottom_y:float = (image['bbox'][3]+image['bbox'][1])//2# - 10
     sentences = [ _ for _ in sentences if image_bottom_y < _['bbox'][1] ]
     
-    if not sentences: return []
+    x1, y1, x2, y2 = image['bbox']
     
-    # keys = ['id', 'page']
-    # for key in keys :
-    #     if key != "image":
-    #         print(key, image[key], end=" |  ")
-    # print()
+    # Figure out if the image is overlapping with another image
+    image_has_image_overlap = False
+    for other in images:
+        y1_o, y2_o = other['bbox'][1], other['bbox'][3]
+        image_has_image_overlap = image_has_image_overlap or (y1_o < y1 < y2_o) or (y1_o < y2 < y2_o)
     
+    # Figure out if the image is overlapping with a sentence
+    image_has_sentence_overlap = False
+    for other in sentences:
+        y1_o, y2_o = other['bbox'][1], other['bbox'][3]
+        image_has_sentence_overlap = image_has_sentence_overlap or (y1_o < y1 < y2_o) or (y1_o < y2 < y2_o)
+    
+    # Given that the document width is somewhere between 585 and 615
+    image_centered = 280 < (x1 + x2) // 2 < 320
+    
+    # print("  Image    image overlap:", image_has_image_overlap)
+    # print("  Image sentence overlap:", image_has_sentence_overlap)
+    # print("  Image         centered:", image_centered)
+    
+    if not sentences: 
+        return [], None
+        
     # Sort sentences by y. This is needed because the order of the sentences is not guaranteed (ACES 2015)
     # Also have to look at the bottom of the sentence! In KN2C 2015, the dot in "Figure 4." is weird..
     #  'Figure 4' has font size 9, '.' has font size 12. This causes '.' to be ABOVE 'Figure 4' in the list of sentences. So weird..
     sentences.sort(key=lambda _: _['bbox'][3])
 
-    # print("\n\n==", image_bottom_y, image['id'])
+    # print("\n\n==", "Page", image['page'], image_bottom_y, image['id'])
     # for sentence in sentences:
-    #     print(print_bbox(sentence['bbox']), len(sentence['text']), sentence['size'], f"'{sentence['text']}'")
+    #     print(sentence['id'], print_bbox(sentence['bbox']), f"{sentence['size']:.2f}", f"'{sentence['text'].lower()}'")
 
-    if not "fig" in sentences[0]['text'].lower():
+    sentence_has_fig = [ "fig" in _['text'].lower() for _ in sentences ]
+    
+    if not any(sentence_has_fig):
         print("VERY WeirD!: ", sentences[0]['text'].lower())
-        # exit()
+        return [], None
+        
+    sentence_fig_index = sentence_has_fig.index(True)
+    sentence = sentences[sentence_fig_index]
+    
+    figure_numbers = re.findall(r'(\d+)', sentence['text'])
+    if not len(figure_numbers):
+        print("WHUT: No figure number found in sentence:", sentence['text'])
+        return [], None
+    
+    figure_number = int(figure_numbers[0])
+    
+    # print("Description sentence:", sentences[sentence_fig_index]['text'])
+    # print("Figure number:", figure_number)
+
+    # Cut off any sentences above the figure description sentence
+    sentences = sentences[sentence_fig_index:]
 
     lineheight:float = sentences[0]['bbox'][3] - sentences[0]['bbox'][1]  # Get the height of the first line under the image
     sentence_bottoms_y:list[float] = [ _['bbox'][1] for _ in sentences ]  # Get all lines under the image (but still on the same page)
@@ -135,15 +184,15 @@ def match_image_with_sentences(image:list, sentences:list[Sentence]) -> list[Sen
     
     sentences = sentences[:sentence_break_at+1]
     
-    # description = " ".join([ _['text'] for _ in sentences ])
-    # print(description, "\n")
+    description = " ".join([ _['text'] for _ in sentences ])
+    # print("Description:", description, "\n")
     
     # filename = re.sub(r"[^a-zA-Z0-9]", "", description.lower())
     # filename = "extracted_images" + "/" + str(image['id']) + "_" + filename + "." + image['ext']
     # with open(filename, "wb") as file:
     #     file.write(image['image'])
     
-    return sentences
+    return sentences, figure_number
 
 def find_paragraph_headers(sentences:list[Sentence]) -> tuple[list[list[Sentence]], int, int]:
     # Find all bold sentences
@@ -261,13 +310,11 @@ def test_paragraph_titles(tdp, paragraph_titles):
                 print(f"|{b}|")
         raise Exception(f"Test case paragrahps failed for {tdp}!")
 
-def test_figure_description(tdp, image_to_sentences):
+def test_image_description(tdp, images):
     # Return True by default
     if tdp not in fill_database_tests.test_cases_figure_descriptions: return True
 
-    image_descriptions = []
-    for _, sentences in image_to_sentences:
-        image_descriptions.append(" ".join([ _['text'] for _ in sentences ]))
+    image_descriptions = [ _['description'] for _ in images ]
     if fill_database_tests.test_cases_figure_descriptions[tdp] != image_descriptions:
         for a, b in zip(fill_database_tests.test_cases_figure_descriptions[tdp], image_descriptions):
             if a != b:
@@ -301,17 +348,6 @@ def flags_decomposer(flags):
     if flags & 2 ** 4:
         l.append("bold")
     return ", ".join(l)
-
-
-
-tdps = U.find_all_TDPs()
-tdps = list(fill_database_tests.test_cases_paragrahps.keys())
-
-# tdps = ["./TDPs/2014/2014_ETDP_CMDragons.pdf"]
-# tdps = ["./TDPs/2012/2012_ETDP_Skuba.pdf"] # Very difficult to parse images and some paragraphs (stacked images,non-bold paragraphs, double paragraphs, uses "reference" instead of "references")
-# tdps = ["./TDPs/2015/2015_TDP_ACES.pdf"] # First image overlaps with description.. very weird
-# tdps = ["./TDPs/2015/2015_TDP_KN2C.pdf"]
-
 
 def split_text_into_sentences(text:str) -> list[str]:
     ### Split into sentences
@@ -354,11 +390,30 @@ def process_text_for_keyword_search(text:str) -> str:
     sentence = " ".join(words)
     return sentence
 
+tdps = U.find_all_TDPs()[:100]
+# tdps = list(fill_database_tests.test_cases_paragrahps.keys())
+
+# tdps = ["./TDPs/2014/2014_ETDP_CMDragons.pdf"]
+# tdps = ["./TDPs/2012/2012_ETDP_Skuba.pdf"] # Very difficult to parse images and some paragraphs (stacked images,non-bold paragraphs, double paragraphs, uses "reference" instead of "references")
+# tdps = ["./TDPs/2015/2015_TDP_ACES.pdf"] # First image overlaps with description.. very weird
+# tdps = ["./TDPs/2015/2015_TDP_SSH.pdf"]
+
+# tdps = ["./TDPs/2015/2015_ETDP_RoboDragons.pdf"]
+# tdps = ["./TDPs/2020/2020_TDP_OMID.pdf"]
+
+PAGE_WIDTH = 0
+
+t_start = time.time()
 for i_tdp, tdp in enumerate(tdps):
     try:
         # print(tdp, end="                                    \r")
         # Open TDP pdf with PyMuPDF        
         doc = fitz.open(tdp)
+        tdp_instance = U.parse_tdp_name(tdp)
+
+        # Create directory for images if it doesn't exist
+        images_dir = os.path.join("./images", tdp_instance.year)
+        os.makedirs( images_dir, exist_ok=True)
         
         ### In the following steps, try to filter out as many sentence that are NOT normal paragraph sentences
         # For example, figure descriptions, page numbers, paragraph titles, etc.
@@ -367,16 +422,27 @@ for i_tdp, tdp in enumerate(tdps):
         # Extract images and sentences
         sentences, images = extract_images_and_sentences(doc)
         # Create mask that references all sentences that are not normal paragraph sentences
-        sentences_id_mask:list  [int] = []
+        sentences_id_mask:list[int] = []
         
         ### Match images with sentences that make up their description
         # Thus, sentences such as "Fig. 5. Render of the proposed redesign of the front assembly"
         image_to_sentences:list[Image, list[Sentence]] = []
         for image in images:
-            image_sentences = match_image_with_sentences(image, sentences)
-            image_to_sentences.append([image, image_sentences])
+            image_sentences, figure_number = match_image_with_sentences(image, sentences, images)
+            image['figure_number'] = figure_number
+            image['description'] = " ".join([ _['text'] for _ in image_sentences ])
+            
+            file_description = process_text_for_keyword_search(image['description']).replace(" ", "_")
+            figure_number_str = str(figure_number) if figure_number is not None else "None"
+            filename = f"{image['id']}_{tdp_instance.year}_{tdp_instance.team}_{figure_number_str}_{file_description}.png"
+            filepath = os.path.join(images_dir, filename)
+            filepath = store_image(image, filepath)
+            image['filepath'] = filepath
+            
+            # image_to_sentences.append([image, image_sentences])
             # Extend sentences_id_mask with found image descriptions
             sentences_id_mask += [ _['id'] for _ in image_sentences ]
+        
         
         
         ### Find all sentences that are pagenumbers
@@ -398,10 +464,11 @@ for i_tdp, tdp in enumerate(tdps):
         
         #### Run tests if possible
         test_paragraph_titles(tdp, paragraph_titles)
-        test_figure_description(tdp, image_to_sentences)
+        test_image_description(tdp, images)
         test_pagenumbers(tdp, pagenumber_sentences)   
         
         
+    
 
         ### Split up remaining sentences into paragraphs
         # Get ids of sentences that are paragraph titles
@@ -445,28 +512,69 @@ for i_tdp, tdp in enumerate(tdps):
                 'sentences_processed': sentences_processed,
             })
         
+        ### Find image references
+        for i_paragraph, paragraph in enumerate(paragraphs):
+            paragraph['images'] = []
+            text = paragraph['text_raw']
+            # Search for "Figure 1" or "Fig. 1" or "Fig 1"
+            # TODO also search for "Figure 1a" or "Figure 1.12" ?
+            
+            image_references = re.findall(r"(?:figure|fig\.?) (\d+)", text.lower())
+            image_references = list(set([ int(_) for _ in image_references ]))
+            
+            # if len(image_references):
+            #     print()
+            #     print(paragraph['title'])
+            #     print(re.findall(r"(figure|fig\.?) (\d+)", text.lower()))
+            
+            for ref in image_references:
+                for i_image, image in enumerate(images):
+                    if image['figure_number'] == ref:
+                        paragraph['images'].append(image)
+            
+
+        # for p in paragraphs:
+        #     print(f"{p['title'].rjust(50)}: {len(p['images'])}")
         
         """ Store everything in the database """
         
         # First, store TDP
+        # print(tdp)
         tdp_instance = U.parse_tdp_name(tdp)
         tdp_instance = db_instance.post_tdp(tdp_instance)
-
-        # Then store each paragraph and its sentences
+    
+        # Then store each paragraph and its sentences and its images
         for i_paragraph, paragraph in enumerate(paragraphs):
             print(f"* {tdp.ljust(50)} | TDP {i_tdp+1}/{len(tdps)} - paragraph {i_paragraph+1}/{len(paragraphs)}", end="    \r")
-            paragraph_embedding = embed_instance.embed(paragraph['text_processed'])
-            paragraph_db = Database.Paragraph_db( tdp_id=tdp_instance.id, title=paragraph['title'], text_raw=paragraph['text_raw'], text_processed=paragraph['text_processed'], embedding=paragraph_embedding )
+            embedding = embed_instance.embed(paragraph['text_processed'])
+            paragraph_db = Database.Paragraph_db( tdp_id=tdp_instance.id, title=paragraph['title'], text_raw=paragraph['text_raw'], text_processed=paragraph['text_processed'], embedding=embedding )
+            
             paragraph_db = db_instance.post_paragraph(paragraph_db)
             
+            # Store all sentences
             sentences_db = []
             for text_raw, text_processed in zip(paragraph['sentences_raw'], paragraph['sentences_processed']):
-                sentence_embedding = embed_instance.embed(text_processed)
-                sentence_db = Database.Sentence_db( paragraph_id=paragraph_db.id, text_raw=text_raw, text_processed=text_processed, embedding=sentence_embedding )
+                embedding = embed_instance.embed(text_processed)
+                sentence_db = Database.Sentence_db( paragraph_id=paragraph_db.id, text_raw=text_raw, text_processed=text_processed, embedding=embedding )
                 sentences_db.append(sentence_db)
             # TODO why don't I have a function to store just one sentence?
+            ids = [ _.paragraph_id for _ in sentences_db ]
             db_instance.post_sentences(sentences_db)
+            
+            # Store all images and mappings
+            for image in paragraph['images']:
+                text_raw = image['description']
+                text_processed = process_text_for_keyword_search(text_raw)
+                embedding = embed_instance.embed(text_processed)
+                image_db = Database.Image_db(filename=image['filepath'], text_raw=text_raw, text_processed=text_processed, embedding=embedding)
+                image_db = db_instance.post_image(image_db)
+                
+                # Store paragraph to image mapping
+                mapping_db = Database.Paragraph_Image_Mapping_db(paragraph_id=paragraph_db.id, image_id=image_db.id)
+                mapping_db = db_instance.post_paragraph_image_mapping(mapping_db)
             
                       
     except Exception as e:
         raise e
+
+print(f"Finished adding {len(tdps)} TDPs to the database in {int(time.time() - t_start)} seconds.")

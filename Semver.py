@@ -42,7 +42,7 @@ class Semver:
         else:
             return self.A > other.A
         
-    def is_strict_followup(self, other):
+    def is_strict_followup(self, other):    
         if self.A == other.A:
             if self.B == other.B:
                 if self.C == other.C:
@@ -75,6 +75,7 @@ class Semver:
     def __repr__(self) -> str:
         semvers = [self.A, self.B, self.C, self.D]
         while 0 < len(semvers) and semvers[-1] == 0: semvers.pop()
+        if not len(semvers): semvers = [0] # Happens when semver is 0.0.0.0
         return ".".join([str(_) for _ in semvers])
         # return f"{self.id}|" + ".".join([str(_) for _ in semvers])
     

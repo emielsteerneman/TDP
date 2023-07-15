@@ -3,10 +3,9 @@ from flask import Flask, render_template, request, send_from_directory
 import Database
 from Database import instance as db_instance
 import utilities as U
-from Embeddings import Embeddor as E
+from Embeddings import instance as embed_instance
 import os
 import Search
-from Search import instance as search_instance
 from telegram import Bot
 import asyncio
 import time
@@ -14,7 +13,11 @@ import threading
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
-E.set_sentences(db_instance.get_sentences())
+embed_instance.set_sentences(db_instance.get_sentences())
+
+search_instance_sentences = Search.Search(Search.Search.SOURCE_SENTENCES)
+search_instance_paragraphs = Search.Search(Search.Search.SOURCE_PARAGRAHPS)
+search_instance_images = Search.Search(Search.Search.SOURCE_IMAGES)
 
 bot = None
 if os.getenv('TELEGRAM_TOKEN') is not None and os.getenv('TELEGRAM_CHAT_ID') is not None:
@@ -41,6 +44,12 @@ def static_logo(filename):
         return send_from_directory('static/logos', filename)
     else:
         return send_from_directory('static/logos', '10px.png')
+
+@app.route('/images/<year>/<filename>')
+def tdp_image(year, filename):
+    print(filename)
+    print(year)
+    return send_from_directory(os.path.join("images", year), filename)
 
 def tdps(request, groupby=None):
     tdps = db_instance.get_tdps()
@@ -83,7 +92,7 @@ def get_tdps_id(id):
 
 @app.get("/query")
 def get_query():
-    return send_from_directory('templates', 'query.html')
+    return send_from_directory('templates', 'query2.html')
 
 @app.get("/api/tdps")
 def get_api_tdps():
@@ -124,8 +133,28 @@ def post_api_query():
     body = request.get_json()
     query = body['query']
 
-    sentences, scores = search_instance.search(query, R=0.1, n=100, score_threshold=0.25)
-    paragraph_ids = search_instance.sentences_to_paragraphs(sentences, scores)
+
+    print("Sentence search")
+    sentences, _ = search_instance_sentences.search(query, R=0.5, n=50)
+    print("\nParagraph search")
+    paragraphs, _ = search_instance_paragraphs.search(query, R=0.5, n=5)
+    print("\nImage search")
+    images, _ = search_instance_images.search(query, R=0.9, score_threshold=0.1, n=20)
+
+    query_words = Search.process_text_for_keyword_search(query).split()
+
+    return {
+        "sentences": [ sentence.to_json_dict() for sentence in sentences ],
+        "paragraphs": [ paragraph.to_json_dict() for paragraph in paragraphs ],
+        "images": [ image.to_json_dict() for image in images ],
+        "query_words": query_words
+    }
+    
+    
+    return {}
+
+    sentences, scores = search_instance_sentences.search(query, R=0.1, n=100, score_threshold=0.25)
+    paragraph_ids = search_instance_sentences.sentences_to_paragraphs(sentences, scores)
     paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]
     
     """ Sort TDPs by the importances of their sentences """
@@ -136,8 +165,6 @@ def post_api_query():
         if paragraph_db.tdp_id not in tdp_ids_by_sentence_scores:
             tdp_ids_by_sentence_scores.append(paragraph_db.tdp_id)
 
-    # sentences, paragraphs, tdps, query, query_words = E.query(query)
-    
     """ Convert Sentence_DB to Sentence dict which holds more information and can have the embedding removed """
     sentences = [ db_instance.get_sentence_exhaustive(s) for s in sentences ]
     for sentence in sentences: sentence.pop('embedding')
@@ -195,7 +222,7 @@ def post_api_query():
         'tdps': tdps,
         'tdp_order': tdp_ids_by_sentence_scores,
         'query': query,
-        'query_words': Search.query_to_words(query)
+        'query_words': Search.make_query(query)
     }
 
 @app.post("/tdps/<id>")

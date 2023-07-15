@@ -168,6 +168,85 @@ class Sentence_db:
 	def __dict__(self):
 		return self.to_dict()
 
+class Image_db:
+	""" Class that represents an image in the database """
+	def __init__(self, id:int=None, filename:str=None, text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None) -> None:
+		self.id = id
+		self.filename = filename
+		self.text_raw = text_raw
+		self.text_processed = text_processed
+		self.embedding = embedding
+		
+	""" Copy all fields from other image to this image if fields in this image are None"""
+	def merge(self, other:Image_db) -> None:
+		if self.id is None: self.id = other.id
+		if self.filename is None: self.filename = other.filename
+		if self.text_raw is None: self.text_raw = other.text_raw
+		if self.text_processed is None: self.text_processed = other.text_processed
+		if self.embedding is None: self.embedding = other.embedding
+     
+	""" Convert image to dict """
+	def to_dict(self) -> dict:
+		return {
+			"id": self.id,
+			"filename": self.filename,
+			"text_raw": self.text_raw,
+			"text_processed": self.text_processed,
+			"embedding": self.embedding
+		}
+
+	""" Special case of dict that can be converted to json, by removing the np.array embedding """
+	def to_json_dict(self) -> str:
+		dict_ = self.to_dict()
+		dict_.pop("embedding")
+		return dict_
+
+	@staticmethod
+	def from_dict(image:dict) -> Image_db:
+		return Image_db(
+			id=image["id"],
+			filename=image["filename"],
+			text_raw=image["text_raw"],
+			text_processed=image["text_processed"],
+			embedding=image["embedding"]
+		)
+
+	def __str__(self) -> str:
+		text_raw_short = self.text_raw[:10] + " ... " + self.text_raw[-10:] if len(self.text_raw) > 25 else self.text_raw
+		text_processed_short = self.text_processed[:10] + " ... " + self.text_processed[-10:] if len(self.text_processed) > 25 else self.text_processed
+		filename_short = self.filename[:10] + " ... " + self.filename[-10:] if len(self.filename) > 25 else self.filename
+		return f"Image_db(id={self.id}, filename={filename_short}, text='{text_raw_short}', text_raw='{text_processed_short}')"
+
+	def __dict__(self):
+		return self.to_dict()
+
+class Paragraph_Image_Mapping_db:
+	def __init__(self, id:int=None, paragraph_id:int=None, image_id:int=None) -> None:
+		self.id = id
+		self.paragraph_id = paragraph_id
+		self.image_id = image_id
+     
+	def to_dict(self) -> dict:
+		return {
+			"id": self.id,
+			"paragraph_id": self.paragraph_id,
+			"image_id": self.image_id
+		}
+     
+	@staticmethod
+	def from_dict(paragraph_image_mapping:dict) -> Paragraph_Image_Mapping_db:
+		return Paragraph_Image_Mapping_db(
+			id=paragraph_image_mapping["id"],
+			paragraph_id=paragraph_image_mapping["paragraph_id"],
+			image_id=paragraph_image_mapping["image_id"]
+		)
+
+	def __str__(self) -> str:
+		return f"PIM_db(id={self.id}, paragraph_id={self.paragraph_id}, image_id={self.image_id})"
+
+	def __dict__(self):
+		return self.to_dict()
+     
 class Database:
 
 	def __init__(self):
@@ -181,7 +260,7 @@ class Database:
 		self.conn.row_factory = dict_factory
 		print("[DB] Database opened")
 
-		# Create tables holding TDPs
+		# Create table holding TDPs
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS tdps (
                id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,7 +271,7 @@ class Database:
                UNIQUE (team, year, is_etdp)
 			)
         ''')
-		# Create tables holding paragraphs. Each paragraph belongs to a TDP.
+		# Create table holding paragraphs. Each paragraph belongs to a TDP.
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS paragraphs (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,7 +283,7 @@ class Database:
 				FOREIGN KEY (tdp_id) REFERENCES tdps (id)
 			)
 		''')
-		# Create tables holding sentences. Each sentence belongs to a paragraph. Each sentence has an embedding.
+		# Create table holding sentences. Each sentence belongs to a paragraph. Each sentence has an embedding.
 		self.conn.execute('''
 			CREATE TABLE IF NOT EXISTS sentences (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,7 +294,28 @@ class Database:
 				FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id)
 			)
 		''')
-
+		# Create table holding images
+		self.conn.execute('''
+			CREATE TABLE IF NOT EXISTS images (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				filename TEXT NOT NULL,
+				text_raw TEXT NOT NULL,
+				text_processed TEXT NOT NULL,
+				embedding NP_ARRAY NOT NULL,
+				UNIQUE (filename)
+			)
+		''')
+  		# Create mapping between paragraphs and images
+		self.conn.execute('''
+			CREATE TABLE IF NOT EXISTS paragraph_image_mapping (
+				paragraph_id INTEGER NOT NULL,
+				image_id INTEGER NOT NULL,
+				FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id),
+				FOREIGN KEY (image_id) REFERENCES images (id)
+				UNIQUE (paragraph_id, image_id)
+			)
+		''')
+  
 		self.conn.commit()
 		print("[DB] Database initialized")
   
@@ -281,7 +381,7 @@ class Database:
 				(tdp_db.filename, tdp_db.team, tdp_db.year, tdp_db.is_etdp, tdp_db.id))
 			self.conn.commit()
 
-		print(f"[DB] TDP {tdp_db} saved")
+		# print(f"[DB] TDP {tdp_db} saved")
 		
 		# Return an instance of the inserted or updated tdp
 		return self.get_tdp_by_rowid(cursor.lastrowid)
@@ -417,10 +517,12 @@ class Database:
 			WHERE tdps.id = ?''', (tdp_db.id,)).fetchall()
 		return [Sentence_db.from_dict(sentence) for sentence in sentences]
 
-	def post_sentences(self, sentences_db:list[Sentence_db]):
-		# First, ensure that all sentences belong to the same paragraph
+	def post_sentences(self, sentences_db:list[Sentence_db]):		
+		if not len(sentences_db): return []
+  
+  		# First, ensure that all sentences belong to the same paragraph
 		paragraph_ids = list(set([sentence_db.paragraph_id for sentence_db in sentences_db]))
-		if len(paragraph_ids) != 1: 
+		if 2 <= len(paragraph_ids): 
 			raise Exception("[DB][post_sentences] Not all sentences belong to the same paragraph")
 
 		# Remove all sentences from this paragraph
@@ -443,6 +545,84 @@ class Database:
 		cursor = self.conn.cursor()
 		cursor.execute(query)
 		return cursor.fetchall()
+
+	""" Images """
+
+	def get_image_by_rowid(self, rowid:int):
+		image = self.conn.execute('''SELECT * FROM images WHERE rowid = ?''', (rowid,)).fetchone()
+		return Image_db.from_dict(image)
+
+	def get_image_by_id(self, image_id:int):
+		image = self.conn.execute('''SELECT * FROM images WHERE id = ?''', (image_id,)).fetchone()
+		return Image_db.from_dict(image)
+
+	def get_image(self, image_db:Image_db):
+		return self.get_image_by_id(image_db.id)
+
+	def get_images(self):
+		images = self.conn.execute('''SELECT * FROM images''').fetchall()
+		return [Image_db.from_dict(image) for image in images]
+
+	def post_image(self, image_db:Image_db):
+		cursor = self.conn.cursor()
+
+		# Insert new paragraph if id is None
+		if image_db.id is None:
+			# Execute insert query. If UNIQUE constraint is violated, return the existing entry. Otherwise, raise exception.
+			try:
+				cursor.execute('''INSERT INTO images (filename, text_raw, text_processed, embedding) VALUES (?, ?, ?, ?)''',
+					(image_db.filename, image_db.text_raw, image_db.text_processed, image_db.embedding))
+				self.conn.commit()
+			except sqlite3.IntegrityError as e:
+				if "UNIQUE constraint failed" in str(e):
+					print(f"[DB] Image already exists: {image_db}")
+					# Entry already exists. Return the existing entry
+					print(image_db.filename)
+					image = cursor.execute('''SELECT * FROM images WHERE filename = ?''', (image_db.filename,)).fetchone()
+					return Image_db.from_dict(image)
+				else:
+					print(f"[DB] IntegrityError: {e}")
+					raise e
+     
+  		# Update paragraph if id is not None
+		else:
+			# First get the paragraph from the database
+			image_db_old = self.get_image(image_db)
+			# Then merge the old paragraph with the new paragraph
+			image_db.merge(image_db_old)
+			# Execute update query
+			cursor.execute('''UPDATE images SET filename = ?, text_raw = ?, text_processed = ?, embedding = ? WHERE id = ?''', 
+				(image_db.filename, image_db.text_raw, image_db.text_processed, image_db.embedding, image_db.id))
+			self.conn.commit()
+
+		# Return an instance of the inserted or updated paragraph
+		return self.get_image_by_rowid(cursor.lastrowid)
+
+	""" Paragraph image mapping """
+	
+	def get_paragraph_image_mapping_by_rowid(self, rowid:int) -> Paragraph_Image_Mapping_db:
+		mapping = self.conn.execute('''SELECT * FROM paragraph_image_mapping WHERE rowid = ?''', (rowid,)).fetchone()
+		return mapping
+ 
+	def get_paragraph_image_mapping_by_paragraph(self, paragraph_db:Paragraph_db) -> Paragraph_Image_Mapping_db:
+		mapping = self.conn.execute('''SELECT * FROM paragraph_image_mapping WHERE paragraph_id = ?''', (paragraph_db.id,)).fetchone()
+		return mapping
+
+	def get_paragraph_image_mapping_by_image(self, image_db:Image_db) -> Paragraph_Image_Mapping_db:
+		mapping = self.conn.execute('''SELECT * FROM paragraph_image_mapping WHERE image_id = ?''', (image_db.id,)).fetchone()
+		return mapping
+
+	def get_paragraph_image_mappings(self) -> list[Paragraph_Image_Mapping_db]:
+		mappings = self.conn.execute('''SELECT * FROM paragraph_image_mapping''').fetchall()
+		return mappings
+
+	def post_paragraph_image_mapping(self, mapping_db:Paragraph_Image_Mapping_db) -> Paragraph_Image_Mapping_db:
+		cursor = self.conn.cursor()
+		cursor.execute('''INSERT INTO paragraph_image_mapping (paragraph_id, image_id) VALUES (?, ?)''',
+			(mapping_db.paragraph_id, mapping_db.image_id))
+		self.conn.commit()
+		return self.get_paragraph_image_mapping_by_rowid(cursor.lastrowid)
+		
 
 
 instance = Database()

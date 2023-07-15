@@ -26,3 +26,7 @@ $ flask run
 ```
 $ docker run -d -p 5000:5000 roboteamtwente/chatrttetdp:latest
 ```
+
+## Interesting material
+https://towardsdatascience.com/text-pre-processing-stop-words-removal-using-different-libraries-f20bac19929a
+https://www.turing.com/kb/stemming-vs-lemmatization-in-python

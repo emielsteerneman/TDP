@@ -74,4 +74,4 @@ class Embeddings:
         return *self.get_similar_sentences(query_embedding), sentence_, words
 
 
-Embeddor = Embeddings()
+instance = Embeddings()

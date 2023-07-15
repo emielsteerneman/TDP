@@ -66,6 +66,8 @@ print(f"Ready to parse {len(tdps)} TDPs")
 # tdps = ["./TDPs/2011/2011_TDP_TIGERs_Mannheim.pdf"] # FalseFalse
 # tdps = ["./TDPs/2015/2015_ETDP_MRL.pdf"] # FalseFalse Check that names don't end up as paragraph title, after Reference
 # tdps = ["./TDPs/2015/2015_TDP_Warthog_Robotics.pdf"]
+tdps = ["./TDPs/2015/2015_TDP_ACES.pdf"]
+
 #"""
 n_sentences = 0
 total_characters = 0
@@ -149,6 +151,7 @@ def resolve_semvers_rec(semvers:Tuple[Semver], depth=0):
     longest_chain = max(chains, key=len, default=[])
     return longest_chain
 
+
 def find_paragraph_titles(sentences, force_next_needed=None):
     p = lambda *args, **kwargs : print(*tuple(["[fppt]"] + list(args)), **kwargs)
     
@@ -167,13 +170,16 @@ def find_paragraph_titles(sentences, force_next_needed=None):
             
         can_be, next_needed, semver = sentence_can_be_paragraph_title(sentence)
         
-        if force_next_needed is not None and force_next_needed != next_needed: continue
+        if force_next_needed is not None and force_next_needed != next_needed: 
+            print(f"Skipping line {i_sentence} because force_next_needed={force_next_needed} and force_next_needed ({force_next_needed}) != next_needed ({next_needed})")
+            
+            continue
                 
-        # can_be_str = '      '
-        # if can_be: can_be_str = 'YES   '
-        # if can_be and next_needed: can_be_str = 'YES + '
-        # if 50 < len(sentence): p(f"{can_be_str} {i_sentence}".rjust(4), f"{sentence[:24]}...{sentence[-24:]}")
-        # else:                  p(f"{can_be_str} {i_sentence}".rjust(4), sentence)
+        can_be_str = '      '
+        if can_be: can_be_str = 'YES   '
+        if can_be and next_needed: can_be_str = 'YES + '
+        if 50 < len(sentence): p(f"{can_be_str} {i_sentence}".rjust(4), f"{sentence[:24]}...{sentence[-24:]}")
+        else:                  p(f"{can_be_str} {i_sentence}".rjust(4), sentence)
         
         if can_be:
             title = sentence 
@@ -181,6 +187,9 @@ def find_paragraph_titles(sentences, force_next_needed=None):
                 title += " " + sentences[i_sentence+1]
             semvers.append(SemverSearch.from_semver(semver, i_sentence, next_needed, title))
         
+    for s in semvers:
+        print(s.title)
+
     start = time.time()
     longest_chain = resolve_semvers(semvers)
     print(f"resolve_semvers took {time.time() - start} seconds")
@@ -221,19 +230,19 @@ def sentence_can_be_paragraph_title(sentence_this, sentence_next=None):
 
 log_file = open("logfile.txt", "w")
 
+tdp_instances = []
+
 for i_tdp, tdp in enumerate(tdps):
     
     print(f"\n\nReading {i_tdp} : {tdp}")
-        
+    
+    # tdp_instance = U.parse_tdp_name(tdp)        
+    # tdp_instances.append(tdp_instance)
+    # continue
+
     try:
         # Open TDP pdf with PyMuPDF        
         doc = fitz.open(tdp)
-
-        # Create output directory and filename
-        _, _, tdp_year, tdp_name = tdp.split("/")
-        output_dir = os.path.join("output", tdp_year)
-        os.makedirs(output_dir, exist_ok=True)
-        output_name = os.path.join(output_dir, f"{tdp_name[:-4]}.txt")
         
 
         semver_current = Semver()
@@ -329,7 +338,7 @@ for i_tdp, tdp in enumerate(tdps):
         paragraph_titles = [ _.title for _ in semver_search_list ]
                 
         # ==== Test case ==== #
-        if tdp in fill_database_tests.test_cases:
+        if tdp in fill_database_tests.test_cases_paragrahps:
             if fill_database_tests.test_cases[tdp] != paragraph_titles:
                 raise Exception(f"Test case failed for {tdp}!")
         
@@ -423,6 +432,11 @@ for i_tdp, tdp in enumerate(tdps):
         print(f"Exception on TDP {tdp}: {e}")
         log_file.write(f"Exception on TDP {tdp}: {e}\n\n\n")
         # raise e
+
+teams = [ tdp_instance.team for tdp_instance in tdp_instances ]
+teams = list(set(teams))
+teams.sort()
+print(teams)
 
 print(f"Total sentences: {n_sentences}")
 print(f"Total characters: {total_characters}")
