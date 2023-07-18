@@ -338,7 +338,7 @@ for i_tdp, tdp in enumerate(tdps):
         paragraph_titles = [ _.title for _ in semver_search_list ]
                 
         # ==== Test case ==== #
-        if tdp in fill_database_tests.test_cases_paragrahps:
+        if tdp in fill_database_tests.test_cases_paragraphs:
             if fill_database_tests.test_cases[tdp] != paragraph_titles:
                 raise Exception(f"Test case failed for {tdp}!")
         

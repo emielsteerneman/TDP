@@ -221,14 +221,12 @@ class Image_db:
 		return self.to_dict()
 
 class Paragraph_Image_Mapping_db:
-	def __init__(self, id:int=None, paragraph_id:int=None, image_id:int=None) -> None:
-		self.id = id
+	def __init__(self, paragraph_id:int=None, image_id:int=None) -> None:
 		self.paragraph_id = paragraph_id
 		self.image_id = image_id
      
 	def to_dict(self) -> dict:
 		return {
-			"id": self.id,
 			"paragraph_id": self.paragraph_id,
 			"image_id": self.image_id
 		}
@@ -236,13 +234,12 @@ class Paragraph_Image_Mapping_db:
 	@staticmethod
 	def from_dict(paragraph_image_mapping:dict) -> Paragraph_Image_Mapping_db:
 		return Paragraph_Image_Mapping_db(
-			id=paragraph_image_mapping["id"],
 			paragraph_id=paragraph_image_mapping["paragraph_id"],
 			image_id=paragraph_image_mapping["image_id"]
 		)
 
 	def __str__(self) -> str:
-		return f"PIM_db(id={self.id}, paragraph_id={self.paragraph_id}, image_id={self.image_id})"
+		return f"PIM_db(paragraph_id={self.paragraph_id}, image_id={self.image_id})"
 
 	def __dict__(self):
 		return self.to_dict()
@@ -602,19 +599,22 @@ class Database:
 	
 	def get_paragraph_image_mapping_by_rowid(self, rowid:int) -> Paragraph_Image_Mapping_db:
 		mapping = self.conn.execute('''SELECT * FROM paragraph_image_mapping WHERE rowid = ?''', (rowid,)).fetchone()
-		return mapping
+		if mapping is None: return None
+		return Paragraph_Image_Mapping_db.from_dict(mapping)
  
 	def get_paragraph_image_mapping_by_paragraph(self, paragraph_db:Paragraph_db) -> Paragraph_Image_Mapping_db:
 		mapping = self.conn.execute('''SELECT * FROM paragraph_image_mapping WHERE paragraph_id = ?''', (paragraph_db.id,)).fetchone()
-		return mapping
+		if mapping is None: return None
+		return Paragraph_Image_Mapping_db.from_dict(mapping)
 
 	def get_paragraph_image_mapping_by_image(self, image_db:Image_db) -> Paragraph_Image_Mapping_db:
 		mapping = self.conn.execute('''SELECT * FROM paragraph_image_mapping WHERE image_id = ?''', (image_db.id,)).fetchone()
-		return mapping
+		if mapping is None: return None
+		return Paragraph_Image_Mapping_db.from_dict(mapping)
 
 	def get_paragraph_image_mappings(self) -> list[Paragraph_Image_Mapping_db]:
 		mappings = self.conn.execute('''SELECT * FROM paragraph_image_mapping''').fetchall()
-		return mappings
+		return [ Paragraph_Image_Mapping_db.from_dict(mapping) for mapping in mappings ]
 
 	def post_paragraph_image_mapping(self, mapping_db:Paragraph_Image_Mapping_db) -> Paragraph_Image_Mapping_db:
 		cursor = self.conn.cursor()
@@ -623,6 +623,13 @@ class Database:
 		self.conn.commit()
 		return self.get_paragraph_image_mapping_by_rowid(cursor.lastrowid)
 		
-
+	""" More utilities """
+	def get_tdp_id_by_image(self, image_db:Image_db) -> int:
+		return self.conn.execute('''
+			SELECT tdps.id FROM images 
+			INNER JOIN paragraph_image_mapping ON image_id = images.id
+			INNER JOIN paragraphs ON paragraphs.id = paragraph_image_mapping.paragraph_id
+			INNER JOIN tdps ON tdps.id = paragraphs.tdp_id
+			WHERE images.id = ?''', (image_db.id,)).fetchone()
 
 instance = Database()

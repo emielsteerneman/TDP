@@ -33,14 +33,14 @@ def make_query(query_:str):
     
 class Search:
     SOURCE_SENTENCES = "sentences"
-    SOURCE_PARAGRAHPS = "paragraphs"
+    SOURCE_PARAGRAPHS = "paragraphs"
     SOURCE_IMAGES = "images"
     
     def __init__(self, source) -> None:
         # Load all sentences. Memory usage should be fine(ish)
         if source == self.SOURCE_SENTENCES:
             self.items_db = db_instance.get_sentences()
-        if source == self.SOURCE_PARAGRAHPS:
+        if source == self.SOURCE_PARAGRAPHS:
             self.items_db = db_instance.get_paragraphs()
         if source == self.SOURCE_IMAGES:
             self.items_db = db_instance.get_images()
@@ -141,7 +141,7 @@ class Search:
         
         return paragraph_ids
 
-def load_paragrahps(query_):
+def load_paragraphs(query_):
     # Query to group sentences by paragraph
     query = """
         SELECT sentences.paragraph_id, GROUP_CONCAT(sentences.text, ' . ') AS text, GROUP_CONCAT(sentences.text_raw, ' . ') AS text_raw, paragraphs.title FROM sentences
@@ -216,11 +216,11 @@ def load_paragrahps(query_):
 if __name__ == "__main__":
     print("[Search] Running search.py as main")
     
-    # load_paragrahps("dribbler reinforcement learning")
+    # load_paragraphs("dribbler reinforcement learning")
     # exit()
     
     search_instance_sentences = Search(Search.SOURCE_SENTENCES)
-    search_instance_paragraphs = Search(Search.SOURCE_PARAGRAHPS)
+    search_instance_paragraphs = Search(Search.SOURCE_PARAGRAPHS)
     search_instance_images = Search(Search.SOURCE_IMAGES)
 
     

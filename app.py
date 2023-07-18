@@ -1,22 +1,24 @@
-# save this as app.py
+import asyncio
+from collections import OrderedDict
+import functools
+import os
+import time
+import threading
+
 from flask import Flask, render_template, request, send_from_directory
 import Database
 from Database import instance as db_instance
 import utilities as U
 from Embeddings import instance as embed_instance
-import os
 import Search
 from telegram import Bot
-import asyncio
-import time
-import threading
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
 embed_instance.set_sentences(db_instance.get_sentences())
 
 search_instance_sentences = Search.Search(Search.Search.SOURCE_SENTENCES)
-search_instance_paragraphs = Search.Search(Search.Search.SOURCE_PARAGRAHPS)
+search_instance_paragraphs = Search.Search(Search.Search.SOURCE_PARAGRAPHS)
 search_instance_images = Search.Search(Search.Search.SOURCE_IMAGES)
 
 bot = None
@@ -133,69 +135,66 @@ def post_api_query():
     body = request.get_json()
     query = body['query']
 
-
     print("Sentence search")
-    sentences, _ = search_instance_sentences.search(query, R=0.5, n=50)
-    print("\nParagraph search")
-    paragraphs, _ = search_instance_paragraphs.search(query, R=0.5, n=5)
-    print("\nImage search")
-    images, _ = search_instance_images.search(query, R=0.9, score_threshold=0.1, n=20)
+    sentences, sentence_scores = search_instance_sentences.search(query, R=0.5, n=100)
+    sentence_ids = [ sentence.id for sentence in sentences ]
+    print("Image search")
+    images, image_scores = search_instance_images.search(query, R=0.5, n=15)
+    image_ids_image_search = [ image.id for image in images ]
+    print("Paragraph search")
+    paragraphs, paragraph_scores = search_instance_paragraphs.search(query, R=0.5, n=15)
+    
+    ## Find the images that belong to the paragraphs
+    paragraph_to_images = [ db_instance.get_paragraph_image_mapping_by_paragraph(p) for p in paragraphs ]
+    paragraph_to_images = [ m for m in paragraph_to_images if m is not None ]
+    image_ids_paragraph_search = [ m.image_id for m in paragraph_to_images ]
+    
+    ## Add the images from the image search to the images from the paragraph search
+    image_ids = image_ids_image_search + image_ids_paragraph_search
+    image_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, image_ids, [])
+    images = [ db_instance.get_image_by_id(id) for id in image_ids ]
+    ordering_images = [ image.id for image in images ]    
+    
+    
+    # image ids to paragraph ids
+    image_to_tdp = { image.id : db_instance.get_tdp_id_by_image(image)['id'] for image in images }
+    tdp_ids_images = list( image_to_tdp.values() )
+        
+    # Get paragraphs that the sentences belong to
+    paragraph_ids = [ s.paragraph_id for s in sentences ]
+    paragraph_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, paragraph_ids, [])
+    paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]    
+    # Get TDPs that the paragraphs belong to (and add image tdp ids)
+    tdp_ids = [ p.tdp_id for p in paragraphs ] + tdp_ids_images
+    tdp_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, tdp_ids, [])
+    tdps = [ db_instance.get_tdp_by_id(id) for id in tdp_ids ]
+    
 
+    ### Sentence ordering. Ensure that the most relevant sentences are shown first    
+    ordering = {}
+    for sentence in sentences:
+        sid, pid = sentence.id, sentence.paragraph_id
+        tid = [ p.tdp_id for p in paragraphs if p.id == pid ][0]
+        if tid not in ordering: ordering[tid] = {}
+        if pid not in ordering[tid]: ordering[tid][pid] = []
+        ordering[tid][pid].append(sid)
+    # Convert dict to list, since dict ordering is not preserved when jsonified
+    # https://github.com/pallets/flask/issues/974
+    ordering = [ [tid, [ [pid, s] for pid, s in p.items() ] ] for tid, p in ordering.items()]
+    
     query_words = Search.process_text_for_keyword_search(query).split()
 
     return {
-        "sentences": [ sentence.to_json_dict() for sentence in sentences ],
-        "paragraphs": [ paragraph.to_json_dict() for paragraph in paragraphs ],
-        "images": [ image.to_json_dict() for image in images ],
+        "tdps": { tdp.id : tdp.to_dict() for tdp in tdps },
+        "paragraphs": { paragraph.id : paragraph.to_json_dict() for paragraph in paragraphs },
+        "sentences": { sentence.id : sentence.to_json_dict() for sentence in sentences },
+        "images": { image.id : image.to_json_dict() for image in images },
+        "ordering": ordering,
+        "ordering_images": ordering_images,
+        "image_to_tdp": image_to_tdp,
         "query_words": query_words
-    }
-    
-    
-    return {}
+    }    
 
-    sentences, scores = search_instance_sentences.search(query, R=0.1, n=100, score_threshold=0.25)
-    paragraph_ids = search_instance_sentences.sentences_to_paragraphs(sentences, scores)
-    paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]
-    
-    """ Sort TDPs by the importances of their sentences """
-    
-    tdp_ids_by_sentence_scores = []
-    for sentence in sentences:
-        paragraph_db = db_instance.get_paragraph_by_id(sentence.paragraph_id)
-        if paragraph_db.tdp_id not in tdp_ids_by_sentence_scores:
-            tdp_ids_by_sentence_scores.append(paragraph_db.tdp_id)
-
-    """ Convert Sentence_DB to Sentence dict which holds more information and can have the embedding removed """
-    sentences = [ db_instance.get_sentence_exhaustive(s) for s in sentences ]
-    for sentence in sentences: sentence.pop('embedding')
-    
-    """ Get all relevant TDPs """
-    tdp_ids = list(set([ _['tdp_id'] for _ in sentences ]))
-    tdps = [ db_instance.get_tdp_by_id(id) for id in tdp_ids ]
-    
-    # Group sentences by paragraph
-    sentences_by_paragraph = {}
-    for sentence in sentences:
-        paragraph_id = sentence['paragraph_id']
-        if paragraph_id not in sentences_by_paragraph: sentences_by_paragraph[paragraph_id] = []
-        sentences_by_paragraph[paragraph_id].append(sentence)
-           
-    # Group paragraph groups by tdp
-    paragraphs_by_tdp = {}
-    for paragraph_id, sentences_ in sentences_by_paragraph.items():
-        tdp_id = sentences_[0]['tdp_id']
-        if tdp_id not in paragraphs_by_tdp: paragraphs_by_tdp[tdp_id] = {}
-        paragraphs_by_tdp[tdp_id][paragraph_id] = sentences_
-    
-    # # Group sentences by tdp
-    # sentences_by_tdp = {}
-    # for sentence in sentences: 
-    #     tdp_id = sentence['tdp_id']
-    #     if tdp_id not in sentences_by_tdp: sentences_by_tdp[tdp_id] = []
-    #     sentences_by_tdp[tdp_id].append(sentence)
-    
-    paragraphs = [ _.to_dict() for _ in paragraphs ]
-    tdps = [ _.to_dict() for _ in tdps ]
     
     # Send results to telegram
     telegram_time = time.time()
@@ -215,16 +214,6 @@ def post_api_query():
     
     print(f"[app] Sent message to telegram in {time.time() - telegram_time:.2f}s")
 
-    return {
-        'sentences': sentences,
-        'sentences_by_tdp': paragraphs_by_tdp,
-        'paragraphs': paragraphs,
-        'tdps': tdps,
-        'tdp_order': tdp_ids_by_sentence_scores,
-        'query': query,
-        'query_words': Search.make_query(query)
-    }
-
 @app.post("/tdps/<id>")
 def post_tdps_id(id):
     # Store text from field 'textfield' in database
@@ -241,3 +230,4 @@ def get_tdps():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+    
