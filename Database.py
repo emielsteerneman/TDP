@@ -253,7 +253,7 @@ class Database:
 		# Converts TEXT to np.array when selecting
 		sqlite3.register_converter("NP_ARRAY", convert_array)
 
-		self.conn = sqlite3.connect('database2.db', check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
+		self.conn = sqlite3.connect('database.db', check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
 		self.conn.row_factory = dict_factory
 		print("[DB] Database opened")
 
