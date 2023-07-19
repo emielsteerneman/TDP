@@ -10,6 +10,7 @@ from Embeddings import instance as embed_instance
 import fill_database_tests
 from Semver import Semver
 import utilities as U
+import PIL
 
 import nltk
 nltk.download('stopwords')
@@ -83,7 +84,14 @@ def extract_images_and_sentences(doc:fitz.Document) -> tuple[list[Sentence], lis
                 for lines in block["lines"]:  # iterate through the text lines
                     for span in lines["spans"]:  # iterate through the text spans
                         # Replace weird characters that python can't really deal with (OMID 2020 4.1 'score')
+                        # a = span['text']
                         span['text'] = span['text'].encode("ascii", errors="ignore").decode()
+                        # b = span['text']
+                        # if len(a) != len(b):
+                        #     print(f"Replaced {len(a) - len(b)} characters")
+                        #     print(a)
+                        #     print(b)
+                        #     print()
                         # Replace all whitespace with a single space, and remove leading and trailing whitespace
                         span['text'] = re.sub(r"\s+", " ", span['text']).strip()
                         # Filter out sentences that are now empty (yes it happens) (ACES 2015)
@@ -101,8 +109,18 @@ def store_image(image:Image, filepath:str) -> None:
     if 101 < len(filepath): filepath = filepath[:64] + "___" + filepath[-34:]
     if not filepath.endswith(extension): 
         filepath += "." + extension
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "wb") as file:
         file.write(image['image'])
+
+    ## Create thumbnail
+    image = PIL.Image.open(filepath)
+    image.thumbnail((256, 256))
+    filepath_thumb = os.path.join("thumbnails", filepath)
+    filepath_thumb = os.path.normpath(filepath_thumb)
+    os.makedirs(os.path.dirname(filepath_thumb), exist_ok=True)
+    image.save(filepath_thumb)
+    
     return filepath
     
 def match_image_with_sentences(image:list, sentences:list[Sentence], images:list[Image] = []) -> tuple[list[Sentence], int]:
@@ -297,18 +315,18 @@ def groupby_y_fontsize_page(sentences:list[Sentence]) -> list[list[Sentence]]:
 
 def test_paragraph_titles(tdp, paragraph_titles):
     # Return True by default
-    if tdp not in fill_database_tests.test_cases_paragrahps: return True
+    if tdp not in fill_database_tests.test_cases_paragraphs: return True
     
     titles = []
     for sentences in paragraph_titles:
         titles.append(" ".join([ _['text'] for _ in sentences ]))
-    if fill_database_tests.test_cases_paragrahps[tdp] != titles:
-        for a, b in zip(fill_database_tests.test_cases_paragrahps[tdp], titles):
+    if fill_database_tests.test_cases_paragraphs[tdp] != titles:
+        for a, b in zip(fill_database_tests.test_cases_paragraphs[tdp], titles):
             if a != b:
                 print("Error!")
                 print(f"|{a}|")
                 print(f"|{b}|")
-        raise Exception(f"Test case paragrahps failed for {tdp}!")
+        raise Exception(f"Test case paragraphs failed for {tdp}!")
 
 def test_image_description(tdp, images):
     # Return True by default
@@ -390,8 +408,9 @@ def process_text_for_keyword_search(text:str) -> str:
     sentence = " ".join(words)
     return sentence
 
-tdps = U.find_all_TDPs()[:100]
-# tdps = list(fill_database_tests.test_cases_paragrahps.keys())
+tdps = U.find_all_TDPs()
+
+# tdps = list(fill_database_tests.test_cases_paragraphs.keys())
 
 # tdps = ["./TDPs/2014/2014_ETDP_CMDragons.pdf"]
 # tdps = ["./TDPs/2012/2012_ETDP_Skuba.pdf"] # Very difficult to parse images and some paragraphs (stacked images,non-bold paragraphs, double paragraphs, uses "reference" instead of "references")
@@ -400,6 +419,16 @@ tdps = U.find_all_TDPs()[:100]
 
 # tdps = ["./TDPs/2015/2015_ETDP_RoboDragons.pdf"]
 # tdps = ["./TDPs/2020/2020_TDP_OMID.pdf"]
+
+""" Load all TDPs to be parsed """
+# Blacklist because these papers don't contain loadable text. The text seems to be images or something weird..
+tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
+# Blacklist because it's almost a perfect duplicate of their 2016 paper
+tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") 
+# Blacklist because they also have a 2014 ETDP which contains this TDP and more
+tdp_blacklist.append("./TDPs/2014/2014_TDP_RoboDragons.pdf") 
+tdps = [ _ for _ in tdps if _ not in tdp_blacklist ]
+
 
 PAGE_WIDTH = 0
 
@@ -421,6 +450,11 @@ for i_tdp, tdp in enumerate(tdps):
         
         # Extract images and sentences
         sentences, images = extract_images_and_sentences(doc)
+        
+        if not len(sentences):
+            print(f"\nWarning: No sentences found in {tdp}\n")
+            continue
+        
         # Create mask that references all sentences that are not normal paragraph sentences
         sentences_id_mask:list[int] = []
         
@@ -434,7 +468,7 @@ for i_tdp, tdp in enumerate(tdps):
             
             file_description = process_text_for_keyword_search(image['description']).replace(" ", "_")
             figure_number_str = str(figure_number) if figure_number is not None else "None"
-            filename = f"{image['id']}_{tdp_instance.year}_{tdp_instance.team}_{figure_number_str}_{file_description}.png"
+            filename = f"{image['id']}_{tdp_instance.year}_{tdp_instance.team}_{figure_number_str}_{file_description}"
             filepath = os.path.join(images_dir, filename)
             filepath = store_image(image, filepath)
             image['filepath'] = filepath
@@ -575,6 +609,7 @@ for i_tdp, tdp in enumerate(tdps):
             
                       
     except Exception as e:
-        raise e
+        print(f"\nError with TDP {tdp}\n")
+        # raise e
 
 print(f"Finished adding {len(tdps)} TDPs to the database in {int(time.time() - t_start)} seconds.")

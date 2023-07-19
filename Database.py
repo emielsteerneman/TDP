@@ -572,9 +572,8 @@ class Database:
 				self.conn.commit()
 			except sqlite3.IntegrityError as e:
 				if "UNIQUE constraint failed" in str(e):
-					print(f"[DB] Image already exists: {image_db}")
+					# print(f"[DB] Image already exists: {image_db}")
 					# Entry already exists. Return the existing entry
-					print(image_db.filename)
 					image = cursor.execute('''SELECT * FROM images WHERE filename = ?''', (image_db.filename,)).fetchone()
 					return Image_db.from_dict(image)
 				else:
