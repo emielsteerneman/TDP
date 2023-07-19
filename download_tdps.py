@@ -3,6 +3,7 @@ import os
 import re
 
 tdp_download_urls = [
+    "https://ssl.robocup.org/wp-content/uploads/2023/07/TDPs_2023.zip",
     "https://ssl.robocup.org/wp-content/uploads/2022/04/TDPs_2022.zip",
     "https://ssl.robocup.org/wp-content/uploads/2020/03/2020_DivA_ETDPs.zip",
     "https://ssl.robocup.org/wp-content/uploads/2020/03/2020_DivB_TDPs.zip",

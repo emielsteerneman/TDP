@@ -1,428 +1,615 @@
-import utilities as U
 import fitz
-import re
 import numpy as np
+import re
+import time
 import os 
-import pickle
-from rank_bm25 import BM25Okapi
-import time 
+
 import Database
 from Database import instance as db_instance
-from Semver import Semver, SemverSearch
-from Embeddings import Embeddor as E
-from itertools import chain
-from typing import List, Tuple, Dict
-import functools
+from Embeddings import instance as embed_instance
 import fill_database_tests
+from Semver import Semver
+import utilities as U
+import PIL
 
 import nltk
 nltk.download('stopwords')
+nltk.download('wordnet')
 from nltk.corpus import stopwords
-sw_nltk = stopwords.words('english')
+STOPWORDS_ENGLISH = stopwords.words('english')
+from nltk.stem import WordNetLemmatizer
+lemmatizer = WordNetLemmatizer()
 
+""" Both these classes are nothing other than dicts, but they are used to make the code more readable by enabling type hinting and type()"""
+class Sentence(dict):
+    def __init__(self, *args, **kwargs):
+        super(Sentence, self).__init__(*args, **kwargs)
+class Image(dict):
+    def __init__(self, *args, **kwargs):
+        super(Image, self).__init__(*args, **kwargs)
 
+"""
+TODO:
+    1. Filter out black images that sometimes seem to be underneath normal images (ACER 2015) (CMDragons 2014)
+    2. Find image descirption not only on sentence breaks but also on font changes (ACES 2015)
+    3. DONE Fix weird FF thing (CMDragons 2014 page 15, "The offense ratio")
+    4. Some images are not detected by PyMuPDF (CMDragons 2014 page 14) (2015 RoboDragons figure 6 7 8)
+    5. Change groupby_... to mergeby_... Would make the code simpler
+    6. Extract references
+    7. Fix finding image descriptions when multiple images are next to and underneath each other on the same page (Skuba 2012)
+    8. Deal with figure description above figure instead of below (Thunderbots 2015)
+    9. Deal with bold text that are clearly paragraph headers but do not have a Semver in front of them (Thunderbots 2015)
+   10. Deal with weird unicode characters (OMID 2020, 4.1 Decisoin layer 'score') 
+"""
 
-import argparse
-parser = argparse.ArgumentParser()
+"""
+Things to know about Figure descriptions:
+    1. They might have a different font size, they might not
+    2. "Fig" might be bold, it might not
+    3. Under the last line of a Figure description, there is always a whitespace of at least 1.5x (TODO: validate) the line height
+    4. The Figure description is always contained on one page
+"""
 
-# Add number of TDPs to parse -n
-parser.add_argument("-n", "--number", help="Number of TDPs to parse", type=int, default=0)
-# Add flag to indicate which years to parse -y, where y is a comma separated list of years
-parser.add_argument("-y", "--years", help="Years to parse", type=str, default="")
+"""
+Things to know about paragraph_headers:
+    1. They are always bold
+    2. They more often than not start with a Semver
+    3. They more often than not fit on one line
+"""
 
-args = parser.parse_args()
-args_years_to_parse = [ int(_) for _ in args.years.split(',') ] if len(args.years) else []
-args_number_to_parse = args.number
+def print_bbox(bbox:list[float]) -> None:
+    return f"[x={bbox[0]:.0f}, y={bbox[1]:.0f} | x={bbox[2]:.0f}, y={bbox[3]:.0f}]"
+
+def extract_images_and_sentences(doc:fitz.Document) -> tuple[list[Sentence], list[Image]]:
+    factory_id = 0
+    sentences, images = [], []
+        
+    for i_page, page in enumerate(doc):
+        # Disabled flag 0b1 to get rid of the stupid ligature characters such as ﬀ (CMDragons 2014 page 15, "The oﬀense ratio")
+        # Find all flags here https://pymupdf.readthedocs.io/en/latest/app1.html#text-extraction-flags
+        blocks = page.get_text("dict", flags=6)["blocks"]
+
+        for block in blocks: 
+            block['page'] = i_page
+            
+            # Add image
+            if "ext" in block: 
+                # Skip images that are 'too' small
+                if block["width"] < 100 or block["height"] < 100: continue
+                block['id'] = factory_id
+                images.append(Image(block))
+                factory_id += 1
+            else:
+            # Add lines
+                for lines in block["lines"]:  # iterate through the text lines
+                    for span in lines["spans"]:  # iterate through the text spans
+                        # Replace weird characters that python can't really deal with (OMID 2020 4.1 'score')
+                        # a = span['text']
+                        span['text'] = span['text'].encode("ascii", errors="ignore").decode()
+                        # b = span['text']
+                        # if len(a) != len(b):
+                        #     print(f"Replaced {len(a) - len(b)} characters")
+                        #     print(a)
+                        #     print(b)
+                        #     print()
+                        # Replace all whitespace with a single space, and remove leading and trailing whitespace
+                        span['text'] = re.sub(r"\s+", " ", span['text']).strip()
+                        # Filter out sentences that are now empty (yes it happens) (ACES 2015)
+                        if len(span['text']) == 0: continue
+                        span['id'] = factory_id
+                        span['bold'] = is_bold(span["flags"])
+                        span['page'] = i_page
+                        sentences.append(Sentence(span))
+                        factory_id += 1
+    
+    return sentences, images
+
+def store_image(image:Image, filepath:str) -> None:
+    extension = image['ext']
+    if 101 < len(filepath): filepath = filepath[:64] + "___" + filepath[-34:]
+    if not filepath.endswith(extension): 
+        filepath += "." + extension
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, "wb") as file:
+        file.write(image['image'])
+
+    ## Create thumbnail
+    image = PIL.Image.open(filepath)
+    image.thumbnail((256, 256))
+    filepath_thumb = os.path.join("thumbnails", filepath)
+    filepath_thumb = os.path.normpath(filepath_thumb)
+    os.makedirs(os.path.dirname(filepath_thumb), exist_ok=True)
+    image.save(filepath_thumb)
+    
+    return filepath
+    
+def match_image_with_sentences(image:list, sentences:list[Sentence], images:list[Image] = []) -> tuple[list[Sentence], int]:
+    # print(f"[match_image_with_sentences] {image['id']}")
+    # Find all sentenecs on the same page as the image
+    page:int = image['page']
+    sentences = [ _ for _ in sentences if _['page'] == page ]
+
+    # Find all sentences that are below the image
+    # 5 pixels padding because it can happen that the bottom of the image is part overlapping the text (ACER 2015)
+    image_bottom_y:float = (image['bbox'][3]+image['bbox'][1])//2# - 10
+    sentences = [ _ for _ in sentences if image_bottom_y < _['bbox'][1] ]
+    
+    x1, y1, x2, y2 = image['bbox']
+    
+    # Figure out if the image is overlapping with another image
+    image_has_image_overlap = False
+    for other in images:
+        y1_o, y2_o = other['bbox'][1], other['bbox'][3]
+        image_has_image_overlap = image_has_image_overlap or (y1_o < y1 < y2_o) or (y1_o < y2 < y2_o)
+    
+    # Figure out if the image is overlapping with a sentence
+    image_has_sentence_overlap = False
+    for other in sentences:
+        y1_o, y2_o = other['bbox'][1], other['bbox'][3]
+        image_has_sentence_overlap = image_has_sentence_overlap or (y1_o < y1 < y2_o) or (y1_o < y2 < y2_o)
+    
+    # Given that the document width is somewhere between 585 and 615
+    image_centered = 280 < (x1 + x2) // 2 < 320
+    
+    # print("  Image    image overlap:", image_has_image_overlap)
+    # print("  Image sentence overlap:", image_has_sentence_overlap)
+    # print("  Image         centered:", image_centered)
+    
+    if not sentences: 
+        return [], None
+        
+    # Sort sentences by y. This is needed because the order of the sentences is not guaranteed (ACES 2015)
+    # Also have to look at the bottom of the sentence! In KN2C 2015, the dot in "Figure 4." is weird..
+    #  'Figure 4' has font size 9, '.' has font size 12. This causes '.' to be ABOVE 'Figure 4' in the list of sentences. So weird..
+    sentences.sort(key=lambda _: _['bbox'][3])
+
+    # print("\n\n==", "Page", image['page'], image_bottom_y, image['id'])
+    # for sentence in sentences:
+    #     print(sentence['id'], print_bbox(sentence['bbox']), f"{sentence['size']:.2f}", f"'{sentence['text'].lower()}'")
+
+    sentence_has_fig = [ "fig" in _['text'].lower() for _ in sentences ]
+    
+    if not any(sentence_has_fig):
+        print("VERY WeirD!: ", sentences[0]['text'].lower())
+        return [], None
+        
+    sentence_fig_index = sentence_has_fig.index(True)
+    sentence = sentences[sentence_fig_index]
+    
+    figure_numbers = re.findall(r'(\d+)', sentence['text'])
+    if not len(figure_numbers):
+        print("WHUT: No figure number found in sentence:", sentence['text'])
+        return [], None
+    
+    figure_number = int(figure_numbers[0])
+    
+    # print("Description sentence:", sentences[sentence_fig_index]['text'])
+    # print("Figure number:", figure_number)
+
+    # Cut off any sentences above the figure description sentence
+    sentences = sentences[sentence_fig_index:]
+
+    lineheight:float = sentences[0]['bbox'][3] - sentences[0]['bbox'][1]  # Get the height of the first line under the image
+    sentence_bottoms_y:list[float] = [ _['bbox'][1] for _ in sentences ]  # Get all lines under the image (but still on the same page)
+    differences = np.diff(sentence_bottoms_y) > 1.5 * lineheight          # Get the y differences between the lines, and where these exceed 2 * lineheight
+    differences:list[bool] = list(differences) + [True]                   # Add a True at the end, so that there is always a sentence break
+    sentence_break_at:int = differences.index(True)                       # Find the first sentence break
+    
+    # print("miwp", lineheight)
+    # print("miwp", sentence_bottoms_y)
+    # print("miwp", differences)
+    # print(sentence_break_at)
+    
+    sentences = sentences[:sentence_break_at+1]
+    
+    description = " ".join([ _['text'] for _ in sentences ])
+    # print("Description:", description, "\n")
+    
+    # filename = re.sub(r"[^a-zA-Z0-9]", "", description.lower())
+    # filename = "extracted_images" + "/" + str(image['id']) + "_" + filename + "." + image['ext']
+    # with open(filename, "wb") as file:
+    #     file.write(image['image'])
+    
+    return sentences, figure_number
+
+def find_paragraph_headers(sentences:list[Sentence]) -> tuple[list[list[Sentence]], int, int]:
+    # Find all bold sentences
+    bold_sentences = [ _ for _ in sentences if _['bold'] ]
+    # Group by y
+    bold_sentence_lines = groupby_y_fontsize_page(bold_sentences)
+
+    abstract_id:int = -1
+    references_id:int = 999999 # Assuming there will be no more than 999999 sentences in a TDP
+    
+    # Extract all groups that start with a Semver
+    semver_groups:list[tuple[Semver, list[Sentence]]] = []
+    
+    for group in bold_sentence_lines:
+        text = " ".join([ _['text'] for _ in group ])
+        # Find abstract and references while we're at it            
+        if abstract_id == -1 and "abstract" in text.lower(): abstract_id = group[0]['id']
+        if references_id == 999999 and "reference" in text.lower(): references_id = group[0]['id']
+        # Find groups that begin with a Semver
+        possible_semver = text.split(" ")[0]
+        if Semver.is_semver(possible_semver):
+            semver_groups.append([Semver.parse(possible_semver), group])
+    
+    # Set semver id to group id, to keep track
+    for i_group, group in enumerate(semver_groups):
+        group[0].id = i_group
+    
+    semvers = [ _[0] for _ in semver_groups ]
+    semvers = U.resolve_semvers(semvers)
+    
+    paragraph_titles = [ semver_groups[semver.id][1] for semver in semvers ]
+    
+    # for sentence_group in paragraph_titles:
+    #     print([ _['id'] for _ in sentence_group ]) 
+               
+    return paragraph_titles, abstract_id, references_id
+
+def find_pagenumbers(sentences):
+    # First, group all sentences per line, and find page splits
+    groups = groupby_y_fontsize_page(sentences)
+    group_pages = [ _[0]['page'] for _ in groups ]
+    difference = np.diff(group_pages)
+    page_breaks = np.where(difference != 0)[0]
+    
+    groups_top_of_page = [ groups[page+1] for page in page_breaks ]
+    groups_bottom_of_page = [ groups[page] for page in page_breaks ]
+    
+    has_pagenumbers_top = True
+    try:
+        for sentences in groups_top_of_page[::2]:
+            text = " ".join([ _['text'] for _ in sentences ])
+            page_number_text = int(text.split(" ")[0])
+            page_number_data = sentences[0]['page'] + 1
+            has_pagenumbers_top = has_pagenumbers_top and page_number_text == page_number_data
+            # print("  page_number_text", page_number_text, "page_number_data", page_number_data)
+    except:
+        has_pagenumbers_top = False
+    # print("has_pagenumbers_top", has_pagenumbers_top)
+    
+    has_pagenumbers_bottom = True    
+    try:
+        for sentences in groups_bottom_of_page[::2]:
+            text = " ".join([ _['text'] for _ in sentences ])
+            page_number_text = int(text.split(" ")[-1])
+            page_number_data = sentences[0]['page'] + 1
+            has_pagenumbers_top = has_pagenumbers_top and page_number_text == page_number_data
+            # print("  page_number_text", page_number_text, "page_number_data", page_number_data)
+    except:
+        has_pagenumbers_bottom = False
+    # print("has_pagenumbers_bottom", has_pagenumbers_bottom)
+        
+    pagenumber_groups = []
+    if has_pagenumbers_top and has_pagenumbers_bottom:
+        pagenumber_groups = groups_top_of_page[::2] + groups_bottom_of_page[::2]  
+    elif has_pagenumbers_top:
+        pagenumber_groups = groups_top_of_page
+    elif has_pagenumbers_bottom:
+        pagenumber_groups = groups_bottom_of_page
+            
+    # Flatten list of lists
+    pagenumber_sentences = [ _ for group in pagenumber_groups for _ in group ]
+    return pagenumber_sentences
+    
+def groupby_y_fontsize_page(sentences:list[Sentence]) -> list[list[Sentence]]:
+    groups = []
+    for sentence in sentences:
+        group_exists = False
+        for group in groups:
+            same_y = group[0]["bbox"][1] == sentence["bbox"][1]
+            same_fontsize = group[0]["size"] == sentence["size"]
+            same_page = group[0]["page"] == sentence["page"]
+            if same_y and same_fontsize and same_page:
+                group.append(sentence)
+                group_exists = True
+                break
+        if not group_exists:
+            groups.append([sentence])
+            
+    return groups
+
+""" Regression tests to ensure that changes to the code do not break the output of the code """
+
+def test_paragraph_titles(tdp, paragraph_titles):
+    # Return True by default
+    if tdp not in fill_database_tests.test_cases_paragraphs: return True
+    
+    titles = []
+    for sentences in paragraph_titles:
+        titles.append(" ".join([ _['text'] for _ in sentences ]))
+    if fill_database_tests.test_cases_paragraphs[tdp] != titles:
+        for a, b in zip(fill_database_tests.test_cases_paragraphs[tdp], titles):
+            if a != b:
+                print("Error!")
+                print(f"|{a}|")
+                print(f"|{b}|")
+        raise Exception(f"Test case paragraphs failed for {tdp}!")
+
+def test_image_description(tdp, images):
+    # Return True by default
+    if tdp not in fill_database_tests.test_cases_figure_descriptions: return True
+
+    image_descriptions = [ _['description'] for _ in images ]
+    if fill_database_tests.test_cases_figure_descriptions[tdp] != image_descriptions:
+        for a, b in zip(fill_database_tests.test_cases_figure_descriptions[tdp], image_descriptions):
+            if a != b:
+                print("Error!")
+                print(a)
+                print(b)
+        raise Exception(f"Test case figure descriptions failed for {tdp}!")       
+
+def test_pagenumbers(tdp, pagenumber_sentences):
+    if tdp not in fill_database_tests.test_cases_pagenumbers: return True
+    text_pagenumbers = [ _['text'] for _ in pagenumber_sentences ]
+    if fill_database_tests.test_cases_pagenumbers[tdp] != text_pagenumbers:
+        raise Exception(f"Test case pagenumbers failed for {tdp}!")
+
+""" // Regression tests """
+
+def is_bold(flags): return flags & 2 ** 4
+
+def flags_decomposer(flags):
+    """Make font flags human readable."""
+    l = []
+    if flags & 2 ** 0: l.append("superscript")
+    if flags & 2 ** 1: l.append("italic")
+    if flags & 2 ** 2: l.append("serifed")
+    else:
+        l.append("sans")
+    if flags & 2 ** 3:
+        l.append("monospaced")
+    else:
+        l.append("proportional")
+    if flags & 2 ** 4:
+        l.append("bold")
+    return ", ".join(l)
+
+def split_text_into_sentences(text:str) -> list[str]:
+    ### Split into sentences
+    ## However, don't split on numbers, because those are often part of the sentence
+
+    REGEX_OFFSET = 1 # Don't split at the end of the regex match, since that includes the first capital letter of the next sentence
+    
+    # Find all the indices of the split points
+    # Note: Can't use re.split() because it drops the delimiters
+    split_indices = np.array([ m.end() for m in re.finditer(f'[!?\.] [A-Z0-9]', text) ])
+    # Append start and end of text
+    split_indices = [REGEX_OFFSET] + list(split_indices) + [len(text)+REGEX_OFFSET]
+    # Remove duplicates and resort (can happen when " + [len(text)+REGEX_OFFSET]" adds a duplicate )
+    split_indices = sorted(list(set(split_indices)))
+    
+    """ Debugging
+    indicator = " " * len(text)
+    for i in split_indices: indicator = indicator[:i-REGEX_OFFSET] + "#" + indicator[i+1-REGEX_OFFSET:]
+    # split text  up into blocks of length 80
+    blocks1 = [ text     [i:i+80] for i in range(0, len(text),      80) ]
+    blocks2 = [ indicator[i:i+80] for i in range(0, len(indicator), 80) ]
+    # print
+    for a, b in zip(blocks1, blocks2): print(f"{a}\n{b}")
+    """
+    
+    sentences = []
+    for a, b in zip(split_indices, split_indices[1:]):
+        sentence = text[a-REGEX_OFFSET:b-REGEX_OFFSET].strip()
+        sentences.append(sentence)
+    
+    return sentences
+
+def process_text_for_keyword_search(text:str) -> str:
+    text = text.lower()
+    words = re.findall(r'\w+', text)                                    # Extract words
+    words = [ word for word in words if 1 < len(word)]                  # Remove single characters (slighly iffy, since it also removes useful things like 'x' and 'y')
+    words = [ word for word in words if word not in STOPWORDS_ENGLISH ] # Filter out stopwords
+    words = [ lemmatizer.lemmatize(word) for word in words ]            # Lemmatize
+    
+    sentence = " ".join(words)
+    return sentence
+
+tdps = U.find_all_TDPs()
+
+# tdps = list(fill_database_tests.test_cases_paragraphs.keys())
+
+# tdps = ["./TDPs/2014/2014_ETDP_CMDragons.pdf"]
+# tdps = ["./TDPs/2012/2012_ETDP_Skuba.pdf"] # Very difficult to parse images and some paragraphs (stacked images,non-bold paragraphs, double paragraphs, uses "reference" instead of "references")
+# tdps = ["./TDPs/2015/2015_TDP_ACES.pdf"] # First image overlaps with description.. very weird
+# tdps = ["./TDPs/2015/2015_TDP_SSH.pdf"]
+
+# tdps = ["./TDPs/2015/2015_ETDP_RoboDragons.pdf"]
+# tdps = ["./TDPs/2020/2020_TDP_OMID.pdf"]
 
 """ Load all TDPs to be parsed """
 # Blacklist because these papers don't contain loadable text. The text seems to be images or something weird..
 tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
 # Blacklist because it's almost a perfect duplicate of their 2016 paper
 tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") 
-tdps = U.find_all_TDPs()
+# Blacklist because they also have a 2014 ETDP which contains this TDP and more
+tdp_blacklist.append("./TDPs/2014/2014_TDP_RoboDragons.pdf") 
 tdps = [ _ for _ in tdps if _ not in tdp_blacklist ]
 
-# Filter out years if needed
-if len(args_years_to_parse) > 0:
-    len_tdps = len(tdps)
-    tdps = [ _ for _ in tdps if int(_.split('/')[2]) in args_years_to_parse ]
-    print(f"Filtered out {len_tdps - len(tdps)}/{len_tdps} TDPs, based on year. Remaining: {len(tdps)}")
 
-# Limit number of TDPs if needed
-if args_number_to_parse > 0:
-    tdps = tdps[:args_number_to_parse]
-    print(f"Limiting number of TDPs to {args_number_to_parse}")
+PAGE_WIDTH = 0
 
-print(f"Ready to parse {len(tdps)} TDPs")
-""""""""""""""""""""""""""""""""""""
-
-
-# tdps = [ "./TDPs/2015/2015_TDP_ACES.pdf" ]
-# tdps = ["./TDPs/2011/2011_TDP_Cyrus.pdf"] # FalseFalse
-# tdps = ["./TDPs/2011/2011_ETDP_Skuba.pdf"] # FalseFalse
-# tdps = ["./TDPs/2017/2017_TDP_UBC_Thunderbots.pdf"] # FalseTrue
-# tdps = [ _ for _ in tdps if "roboteam" in _.lower() ]
-# tdps = ["./TDPs/2014/2014_ETDP_CMDragons.pdf"] # TrueFalse, Very difficult to parse paragraph titles
-# tdps = ["./TDPs/2011/2011_TDP_TIGERs_Mannheim.pdf"] # FalseFalse
-# tdps = ["./TDPs/2015/2015_ETDP_MRL.pdf"] # FalseFalse Check that names don't end up as paragraph title, after Reference
-# tdps = ["./TDPs/2015/2015_TDP_Warthog_Robotics.pdf"]
-#"""
-n_sentences = 0
-total_characters = 0
-sentences_all = []
-
-""" Utility functions"""
-
-def sentence_to_words(sentence):
-    words = sentence.strip().split(" ")
-    words = [ word for word in words if len(word) ]
-    return words
-
-def resolve_semvers(semvers:List[Semver]):
-    # Filter out all semvers that are not strictly followups of one of the previous semvers.
-    # For exmaple. given [1, 1.1, 2.0, 9.5, 2.2, 2.4, 3], '9.5' should be dropped since it
-    # can not be a followup of '1', '1.1', '2.0'. It wouldn't fit anywhere in a version chain
-    semvers_valid = [Semver(0)] # Add this, since it can happen that '1.0.0' occurs multiple times
-    for i_semver, semver in enumerate(semvers):
-        is_followup = any([ semver.is_strict_followup(semver_prev) for semver_prev in semvers_valid ])
-        if is_followup: semvers_valid.append(semver)
-    # Remove the first semver, since it is just a bootstrapping semver
-    semvers_valid = semvers_valid[1:]
-    return resolve_semvers_rec(tuple(semvers_valid))
-
-# Cached recursive function
-@functools.cache
-def resolve_semvers_rec(semvers:Tuple[Semver], depth=0):
-    semvers = list(semvers)
-    """ find the longest possible chain of strictly followup semvers """
-    
-    # Custom print function, to print the depth of the recursion
-    p = lambda *args, **kwargs : print(*tuple([f"[rsr][{str(resolv_i).rjust(3)}]{' | '*depth}"] + list(args)), **kwargs)
-    # Filter out semvers that are not followups of the given semver
-    chain_filter_non_followup = lambda semver, chain: list(filter(lambda s: s.is_followup(semver), chain))
-    # Check if any of the semvers in the chain is a strict followup of the given semver
-    chain_is_any_strict_followup = lambda semver, chain: any([ semver.is_strict_followup(s) for s in chain ]) or len(chain) == 0
-    # Check if chain a is completely within chain b, by looking at the Semver IDs
-    chain_a_in_chain_b = lambda chain_a, chain_b: all([ any([a.id == b_.id for b_ in chain_b]) for a in chain_a ])
-
-    if not len(semvers): return []
-    
-    # p("Got", semvers)
-    
-    # Grab semver at the front of the chain
-    current_semver = semvers.pop(0)
-
-    # Create a list of all possible followup chains
-    followup_chains = []
-    for i_semver, semver in enumerate(semvers):
-        # If this semver is a strict followup of the current semver
-        if semver.is_strict_followup(current_semver):
-            # Create a new chain, with this semver at the front
-            chain = semvers[i_semver:]
-            # Filter out all semvers that are not a followup of this semver
-            chain = chain_filter_non_followup(current_semver, semvers[i_semver:] )
-            # Filter out all semvers that can't fit anywhere in the chain
-            chain_ = []
-            for i, s in enumerate(chain):
-                if chain_is_any_strict_followup(s, chain_):
-                    chain_.append(s)
-            # Check if this chain is not already completely within another chain            
-            chain_present = any([ chain_a_in_chain_b(chain_, chain) for chain in followup_chains ])
-            
-            if not chain_present: followup_chains.append( chain_ )
-
-    # for chain in followup_chains: p(f"Next: {chain}")
-
-    # Add all followup chains, prepended with the current semver
-    # p("Adding followup chains")
-    chains = [ [current_semver] + resolve_semvers_rec(tuple(chain), depth+1) for chain in followup_chains ]
-    # Add just the current semver as a possible chain
-    # p("Adding current semver")
-    chains.append( [current_semver] )
-    
-    # Ignore the current semver, and add all followup chains
-    # First, check if this chain is not already within the previous chains
-    if not any([ chain_a_in_chain_b(semvers, chain_) for chain_ in chains ]):
-        # p("Ignoring current semver")
-        chains.append( resolve_semvers_rec(tuple(semvers), depth+1) )
-    
-    longest_chain = max(chains, key=len, default=[])
-    return longest_chain
-
-def find_paragraph_titles(sentences, force_next_needed=None):
-    p = lambda *args, **kwargs : print(*tuple(["[fppt]"] + list(args)), **kwargs)
-    
-    p(f"Finding paragraph titles within {len(sentences)} sentences. (force_next_needed={force_next_needed}))")
-    
-    semvers = []
-
-    reference_at = -1
-    abstract_at = -1
-    
-    for i_sentence in range(len(sentences)):
-        sentence = sentences[i_sentence]
-        if sentence.lower().startswith("reference"): 
-            reference_at = i_sentence
-            break
-            
-        can_be, next_needed, semver = sentence_can_be_paragraph_title(sentence)
-        
-        if force_next_needed is not None and force_next_needed != next_needed: continue
-                
-        # can_be_str = '      '
-        # if can_be: can_be_str = 'YES   '
-        # if can_be and next_needed: can_be_str = 'YES + '
-        # if 50 < len(sentence): p(f"{can_be_str} {i_sentence}".rjust(4), f"{sentence[:24]}...{sentence[-24:]}")
-        # else:                  p(f"{can_be_str} {i_sentence}".rjust(4), sentence)
-        
-        if can_be:
-            title = sentence 
-            if next_needed:
-                title += " " + sentences[i_sentence+1]
-            semvers.append(SemverSearch.from_semver(semver, i_sentence, next_needed, title))
-        
-    start = time.time()
-    longest_chain = resolve_semvers(semvers)
-    print(f"resolve_semvers took {time.time() - start} seconds")
-    print("Longest link:", longest_chain)
-    
-    return longest_chain   
-    
-def sentence_can_be_paragraph_title(sentence_this, sentence_next=None):
-    words = sentence_to_words(sentence_this)
-    
-    # Check if there is a name in the sentence, such as 'Zarghami, M.' or 'Wei, Z.'. 
-    # These are not paragraph titles, but probably references
-    name_regex = r'([A-Z][a-z]+, [A-Z]\.)'
-    if re.search(name_regex, sentence_this): return False, False, None
-    
-    # If sentence doesn't start with semver, return False
-    if not Semver.is_semver(words[0]): return False, False, None
-    
-    semver = Semver.parse(words[0])
-    
-    # semvers should be reasonably low. Not something like 1.63.12 or 2015
-    if semver.A and semver.A > 20: return False, False, None
-    if semver.B and semver.B > 20: return False, False, None
-    if semver.C and semver.C > 20: return False, False, None
-    if semver.D and semver.D > 20: return False, False, None
-    
-    # If more than 1 word and last word is not letters, return False
-    # if 1 < len(words) and not words[-1].isalpha(): return False, False, None
-    
-    next_needed = len(words) == 1
-    
-    return True, next_needed, semver
-
-""""""""""""""""""""""""
-
-
-""" Start parsing the TDPs """
-
-log_file = open("logfile.txt", "w")
-
+t_start = time.time()
 for i_tdp, tdp in enumerate(tdps):
-    
-    print(f"\n\nReading {i_tdp} : {tdp}")
-        
     try:
+        # print(tdp, end="                                    \r")
         # Open TDP pdf with PyMuPDF        
         doc = fitz.open(tdp)
+        tdp_instance = U.parse_tdp_name(tdp)
 
-        # Create output directory and filename
-        _, _, tdp_year, tdp_name = tdp.split("/")
-        output_dir = os.path.join("output", tdp_year)
-        os.makedirs(output_dir, exist_ok=True)
-        output_name = os.path.join(output_dir, f"{tdp_name[:-4]}.txt")
+        # Create directory for images if it doesn't exist
+        images_dir = os.path.join("./images", tdp_instance.year)
+        os.makedirs( images_dir, exist_ok=True)
         
+        ### In the following steps, try to filter out as many sentence that are NOT normal paragraph sentences
+        # For example, figure descriptions, page numbers, paragraph titles, etc.
+        # Place the ids of all these sentences in a single mask
+        
+        # Extract images and sentences
+        sentences, images = extract_images_and_sentences(doc)
+        
+        if not len(sentences):
+            print(f"\nWarning: No sentences found in {tdp}\n")
+            continue
+        
+        # Create mask that references all sentences that are not normal paragraph sentences
+        sentences_id_mask:list[int] = []
+        
+        ### Match images with sentences that make up their description
+        # Thus, sentences such as "Fig. 5. Render of the proposed redesign of the front assembly"
+        image_to_sentences:list[Image, list[Sentence]] = []
+        for image in images:
+            image_sentences, figure_number = match_image_with_sentences(image, sentences, images)
+            image['figure_number'] = figure_number
+            image['description'] = " ".join([ _['text'] for _ in image_sentences ])
+            
+            file_description = process_text_for_keyword_search(image['description']).replace(" ", "_")
+            figure_number_str = str(figure_number) if figure_number is not None else "None"
+            filename = f"{image['id']}_{tdp_instance.year}_{tdp_instance.team}_{figure_number_str}_{file_description}"
+            filepath = os.path.join(images_dir, filename)
+            filepath = store_image(image, filepath)
+            image['filepath'] = filepath
+            
+            # image_to_sentences.append([image, image_sentences])
+            # Extend sentences_id_mask with found image descriptions
+            sentences_id_mask += [ _['id'] for _ in image_sentences ]
+        
+        
+        
+        ### Find all sentences that are pagenumbers
+        # For example, "Description of the Warthog Robotics SSL 2015 Project    5" or "6    Warthog Robotics"
+        pagenumber_sentences = find_pagenumbers(sentences)
+        # Extend sentences_id_mask with found pagenumbers
+        sentences_id_mask += [ _['id'] for _ in pagenumber_sentences ]       
+        
+        
+        ### Find all sentences that can make up a paragraph title
+        paragraph_titles, abstract_id, references_id = find_paragraph_headers(sentences)
+        # Extend sentences_id_mask with found paragraph titles, and abstract id and references id
+        for sentence_group in paragraph_titles:
+            sentences_id_mask += [ _['id'] for _ in sentence_group ]
+        # Add to mask all sentences before and after abstract and references
+        sentences_id_mask += list(range(0, abstract_id+1))
+        sentences_id_mask += list(range(references_id, sentences[-1]['id'] + 1))
 
-        semver_current = Semver()
-        paragraph_titles = []
+        
+        #### Run tests if possible
+        test_paragraph_titles(tdp, paragraph_titles)
+        test_image_description(tdp, images)
+        test_pagenumbers(tdp, pagenumber_sentences)   
+        
+        
+    
+
+        ### Split up remaining sentences into paragraphs
+        # Get ids of sentences that are paragraph titles
+        paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_titles ])
+        # Create empty bin for each paragraph
+        paragraph_bins:list[list[Sentence]] = [ [] for _ in range(len(paragraph_titles)) ]
+        # Move each unmasked sentence into the correct bin
+        for sentence in sentences:
+            # Skip any masked sentence (paragraph titles / pagenumbers / figure descriptions / etc)
+            if sentence['id'] in sentences_id_mask: continue
+            # Find index of bin that this sentence belongs to
+            bin_mask = list(sentence['id'] < paragraph_title_ids) + [True]
+            bin_idx = list(bin_mask).index(True)-1
+            # Skip sentences that appear before the first paragraphs, such as the paper title or abstract
+            if bin_idx < 0: continue
+            # Place sentence into correct bin
+            paragraph_bins[bin_idx].append(sentence)
+
         paragraphs = []
-        current_paragraph_title = ""
-        current_paragraph = []
-        abstract_found = False
-        references_found = False
-        skipNext = False
+        for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_titles):
+            title = " ".join([ _['text'] for _ in paragraph_title ])
+            text_raw = "\n".join([ _['text'] for _ in paragraph_bin ])
+            
+            # Replace multiple whitespace with single whitespace
+            text_raw = re.sub(r"\s+", " ", text_raw)
+            # Get rid of newlines and reconstruct hyphenated words
+            text_raw = text_raw.replace("-\n", "")
+            text_raw = text_raw.replace("\n", " ")
+            
+            # references = re.findall(r"\[[0-9]+\]", text_raw) TODO
+            sentences_raw = split_text_into_sentences(text_raw)
+            sentences_processed = [ process_text_for_keyword_search(_) for _ in sentences_raw ]
+            
+            text_processed = " ".join(sentences_processed)
+                        
+            paragraphs.append({
+                'title': title,
+                'text_raw': text_raw,
+                'text_processed': text_processed,
+                'sentences_raw': sentences_raw,
+                'sentences_processed': sentences_processed,
+            })
         
-        has_both_semver_and_title = False
-        has_both_semver_and_title_found = False
-        
-        # Load all pages from the pdf
-        pages = [ _.get_text() for _ in list(doc) ]
-        # Get all sentences from all pages
-        sentences_per_page = [ [line.strip() for line in page.splitlines()] for page in pages ]
-        # Remove empty sentences
-        sentences_per_page = [ [_ for _ in page if _] for page in sentences_per_page ]
-               
-        """ Pagenumber removal """       
-        # Check if pdf has page numbers, but only on the odd pages. On even pages, it might go wrong
-        # Example of a pdf that goes wrong: 2022_TDP_RoboJackets.pdf page 3: "RoboJackets 2022 Team Description Paper 3"
-        has_pagenumbers_top    = all( [ sentences[ 0].strip().isnumeric() for sentences in sentences_per_page[1::2] ] )
-        has_pagenumbers_bottom = all( [ sentences[-1].strip().isnumeric() for sentences in sentences_per_page[1::2] ] )
-        
-        print(f"  Has page numbers top:    {has_pagenumbers_top}")
-        print(f"  Has page numbers bottom: {has_pagenumbers_bottom}")
-        
-        if has_pagenumbers_top and not has_pagenumbers_bottom:
-            for i_page in range(1, len(sentences_per_page)):
-                while str(i_page+1) != (popped := sentences_per_page[i_page].pop(0)):
-                    pass
-        
-        if has_pagenumbers_bottom and has_pagenumbers_top:
-            [ sentences.pop(-1) for sentences in sentences_per_page[::2] ]
-        
-        if has_pagenumbers_bottom and not has_pagenumbers_top:
-            [ sentences.pop(-1) for sentences in sentences_per_page ]
-        """ Pagenumber removal done """
-        
-        
-        # Flatten the list of sentences
-        sentences = list(chain.from_iterable( sentences_per_page ))
-        
-        semver_search_list = find_paragraph_titles(sentences)
-        print(f"\nsemver_search_list of length {len(semver_search_list)}")
-        for semver_search in semver_search_list:
-            i = semver_search.i_sentence
-            a = '+' if semver_search.next_needed else '-'
-            b = str(i).rjust(5) 
-            c = semver_search.title
-            d = sentences[i+1] if semver_search.next_needed else ""
-            print(f" {a} {b} | {c}")
-        
-        if len(set([_.next_needed for _ in semver_search_list])) != 1:
-            print("Hmm...")
-            # Count trues and falses in semver_search_list
-            fraction_true = sum([_.next_needed for _ in semver_search_list]) / len(semver_search_list)
-            if   fraction_true < 0.3: semver_search_list = find_paragraph_titles(sentences, force_next_needed=False)
-            elif 0.7 < fraction_true: semver_search_list = find_paragraph_titles(sentences, force_next_needed=True)
-            else:
-                log_file.write(f"Can't figure out {tdp}\n")
-                            
-                print(f"\nsemver_search_list of length {len(semver_search_list)}")
-                for semver_search in semver_search_list:
-                    i = semver_search.i_sentence
-                    a = '+' if semver_search.next_needed else ' '
-                    b = str(i).rjust(5) 
-                    c = semver_search.title
-                    d = sentences[i+1] if semver_search.next_needed else ""
-                    print(f" {a} {b} - {c}")
-                    log_file.write(f" {a} {b} - {c}\n")
-                print(f"Can't seem to figure out paragraph titles. Skipping tdp {tdp}")
-                print("\n\n\n\n")
-                continue
+        ### Find image references
+        for i_paragraph, paragraph in enumerate(paragraphs):
+            paragraph['images'] = []
+            text = paragraph['text_raw']
+            # Search for "Figure 1" or "Fig. 1" or "Fig 1"
+            # TODO also search for "Figure 1a" or "Figure 1.12" ?
+            
+            image_references = re.findall(r"(?:figure|fig\.?) (\d+)", text.lower())
+            image_references = list(set([ int(_) for _ in image_references ]))
+            
+            # if len(image_references):
+            #     print()
+            #     print(paragraph['title'])
+            #     print(re.findall(r"(figure|fig\.?) (\d+)", text.lower()))
+            
+            for ref in image_references:
+                for i_image, image in enumerate(images):
+                    if image['figure_number'] == ref:
+                        paragraph['images'].append(image)
+            
 
+        # for p in paragraphs:
+        #     print(f"{p['title'].rjust(50)}: {len(p['images'])}")
         
-        # Split into paragraph titles and sentences
-        paragraph_sentences = []
-        indices = [0] + [_.i_sentence for _ in semver_search_list] + [len(sentences)]
-        for a, b in list(zip(indices, indices[1:])):
-            paragraph_sentences.append(sentences[a:b])
-
-        # Drop stuff before introduction, such as title and abstract
-        paragraph_sentences.pop(0)
-
-        # For the last paragraph, search for "reference" and drop everything after that
-        indices = [i for i, _ in enumerate(paragraph_sentences[-1]) if "reference" in paragraph_sentences[-1][i].lower()]
-        if len(indices): paragraph_sentences[-1] = paragraph_sentences[-1][:indices[0]]
-       
-        paragraph_titles = [ _.title for _ in semver_search_list ]
-                
-        # ==== Test case ==== #
-        if tdp in fill_database_tests.test_cases:
-            if fill_database_tests.test_cases[tdp] != paragraph_titles:
-                raise Exception(f"Test case failed for {tdp}!")
+        """ Store everything in the database """
         
-        
-        # Store TDP
+        # First, store TDP
+        # print(tdp)
         tdp_instance = U.parse_tdp_name(tdp)
         tdp_instance = db_instance.post_tdp(tdp_instance)
-        
-        for paragraph_title, paragraph in zip(paragraph_titles, paragraph_sentences):
+    
+        # Then store each paragraph and its sentences and its images
+        for i_paragraph, paragraph in enumerate(paragraphs):
+            print(f"* {tdp.ljust(50)} | TDP {i_tdp+1}/{len(tdps)} - paragraph {i_paragraph+1}/{len(paragraphs)}", end="    \r")
+            embedding = embed_instance.embed(paragraph['text_processed'])
+            paragraph_db = Database.Paragraph_db( tdp_id=tdp_instance.id, title=paragraph['title'], text_raw=paragraph['text_raw'], text_processed=paragraph['text_processed'], embedding=embedding )
             
-            # TODO maybe improve excessive "\n".join() and .splitlines() calls
-            text_raw = "\n".join(paragraph)
-            text = text_raw
-
-            # print("\n\n")
-            # print(text_raw)
-
-            text = text.replace("-\n", "")
-            text = text.replace("\n", " ")
-            text = text.replace("-", "")
-
-            text = text.replace("Fig.", "Fig ")
-            text = text.replace("fig.", "fig.")
-            text = text.replace("e.g.", "eg")
-            text = text.replace("i.e.", "ie")
-
-            ### Split into sentences
-            ## However, don't split on numbers, because those are often part of the sentence
-            
-            # Find all the indices of the split points
-            # Note: Can't use re.split() because it drops the delimiters
-            split_indices = np.array([ m.end() for m in re.finditer('[^\d]\.', text) ])
-            
-            # If there are split points, then there are multiple sentences
-            # We need to split the text into multiple sentences
-            sentences = []
-            if len(split_indices):
-                split_indices_norm = [split_indices[0]] + list(np.diff(split_indices))
-                for indice in split_indices_norm:
-                    sentence, text = text[:indice], text[indice:]
-                    sentences.append(sentence)
-                    # else:
-                    #     print(f"Skipping sentence {len(sentence)} {len(sentence.split(' '))} {    sentence.strip()}")
-            else:
-                sentences = [ text ]
-
-            # Filter and clean all sentences
-            sentences_processed = []
-            for sentence in sentences:
-                # Filter out sentences that are too short
-                if 20 < len(sentence) < 20 or len(sentence.split(" ")) < 3: 
-                    sentences_processed.append(None)
-                    continue
-                
-                # Convert to lowercase
-                sentence = sentence.lower()
-                words = re.findall(r'\w+', sentence)                      # Extract words
-                words = [ word for word in words if 1 < len(word)]        # Remove single characters
-                words = [ word for word in words if word not in sw_nltk ] # Filter out stopwords
-                sentence = " ".join(words)
-                sentences_processed.append(sentence)
-
-            text = " ".join(sentences)
-                        
-            n_sentences += len(sentences)
-            total_characters += len(text)
-
-            # Filter out any sentences where sentence_processed is None
-            sentences_sentences_processed = list(zip(*[ [s, sp] for s, sp in zip(sentences, sentences_processed) if sp is not None ]))
-            if not len(sentences_sentences_processed):
-                print("Empty paragraph after filtering sentences")
-                continue
-            sentences, sentences_processed = sentences_sentences_processed
-            
-            ### Store everything in the database
-                        
-            # Store paragraph
-            paragraph_db = Database.Paragraph_db(tdp_id=tdp_instance.id, title=paragraph_title, text=text, text_raw=text_raw)
             paragraph_db = db_instance.post_paragraph(paragraph_db)
-
-            # Calculate embeddings
-            embeddings = [ E.embed(sentence) for sentence in sentences ]
-            # embeddings = [ np.zeros(10) for sentence in sentences ]
             
-            # Store sentences
-            sentences_db = [ Database.Sentence_db(text=sentence_processed, text_raw=sentence, embedding=embedding, paragraph_id=paragraph_db.id) for sentence, sentence_processed, embedding in zip(sentences, sentences_processed, embeddings)]
+            # Store all sentences
+            sentences_db = []
+            for text_raw, text_processed in zip(paragraph['sentences_raw'], paragraph['sentences_processed']):
+                embedding = embed_instance.embed(text_processed)
+                sentence_db = Database.Sentence_db( paragraph_id=paragraph_db.id, text_raw=text_raw, text_processed=text_processed, embedding=embedding )
+                sentences_db.append(sentence_db)
+            # TODO why don't I have a function to store just one sentence?
+            ids = [ _.paragraph_id for _ in sentences_db ]
             db_instance.post_sentences(sentences_db)
             
-
+            # Store all images and mappings
+            for image in paragraph['images']:
+                text_raw = image['description']
+                text_processed = process_text_for_keyword_search(text_raw)
+                embedding = embed_instance.embed(text_processed)
+                image_db = Database.Image_db(filename=image['filepath'], text_raw=text_raw, text_processed=text_processed, embedding=embedding)
+                image_db = db_instance.post_image(image_db)
+                
+                # Store paragraph to image mapping
+                mapping_db = Database.Paragraph_Image_Mapping_db(paragraph_id=paragraph_db.id, image_id=image_db.id)
+                mapping_db = db_instance.post_paragraph_image_mapping(mapping_db)
+            
+                      
     except Exception as e:
-        print(f"Exception on TDP {tdp}: {e}")
-        log_file.write(f"Exception on TDP {tdp}: {e}\n\n\n")
+        print(f"\nError with TDP {tdp}\n")
         # raise e
 
-print(f"Total sentences: {n_sentences}")
-print(f"Total characters: {total_characters}")
+print(f"Finished adding {len(tdps)} TDPs to the database in {int(time.time() - t_start)} seconds.")
