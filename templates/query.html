@@ -17,7 +17,7 @@
       <br>
 			<div class="row">
 				<div class="col-md-12 text-center" style="font-size: 20px;">
-					<b> RoboTeam Twente </b> <img src="/static/logos/RoboTeam Twente.png" width=50px> has won the Open Source Awards 2023! A big thanks to everyone voting for us!
+					<b> R-R-R-RoboTeam Twente </b> <img src="/static/logos/RoboTeam Twente.png" width=50px> has won the Open Source Awards 2023! A big thanks to everyone voting for us!
 				</div>
 			</div>
 			<hr>
@@ -55,10 +55,9 @@
         </div>
       </div>
 
-
       <hr>
 
-      <div class="row" v-if="!search_in_progress && !sentences.length && !server_error && latest_query.length && !show_example_query"> 
+      <div class="row" v-if="!search_in_progress && !Object.keys(sentences).length && !server_error && latest_query.length && !show_example_query"> 
         <div class="col-md-12 text-center" style='font-size: 24px;'>
           No relevant information found for "{{ latest_query }}"
         </div>
@@ -87,48 +86,36 @@
       <!-- MAIN CONTENT -->
 
       <!-- Main row -->
-      <div class="row" v-if="sentences.length">
+      <div class="row" v-if="Object.keys(sentences).length">
 
-          <!-- Begin sentences -->
-          <div class="col-md-6" style="padding-right: 20px;">
-            <h2> Sentences </h2>
-            <!-- For each tdp -->
-            <div v-for="tdp_id in tdp_order">
-              <div class="col-md-11">
-                <a v-bind:href="'/tdps/' + tdp_id"> {{ getTdp(tdp_id)['team'] }} {{ getTdp(tdp_id)['year'] }} </a>
-                <img style="padding-left: 10px;" v-bind:src="getLogo(tdp_id)" width=40px>
-              </div>
-
-              <!-- For each paragraph in tdp -->
-              <div v-for="paragraphs in sentences_by_tdp[tdp_id]" class="row" style="padding-bottom: 20px">
-                
-                <div class="col-md-11" style="font-size: 14px; font-weight: bold;" > {{ paragraphs[0]['paragraph_title'] }} </div>
-
-                <div v-for="sentence in paragraphs" style="padding-left: 20px;">
-                  <!-- For each sentence in paragraph -->
-                    <div class="col-md-11" style="font-size: 12px;" v-html="highlight(sentence['text_raw'])"></div>
-                </div><!-- // For each paragraph -->
-
-              </div>
-            </div><!-- // For each tdp -->
-          </div><!-- End sentences-->
-
-
-
-          <div class="col-md-6" style="padding-left: 20px">
-            <!-- For each paragraph -->
-            <h2> Paragraphs </h2>
-            <div v-for="paragraph in paragraphs" class="row">
-                <div class="col-md-11">
-                    <a v-bind:href="'/tdps/' + paragraph['tdp_id']"> {{ getTdp(paragraph['tdp_id'])['team'] }} {{ getTdp(paragraph['tdp_id'])['year'] }}</a> <div style="padding-left: 20px; display: inline; font-size: 14px; font-weight: bold;"> {{ paragraph['title'] }}</div>
-                </div>
-                <p style="font-size: 12px;" v-html="highlight(paragraph['text_raw'])"></p>
-            </div>
+        <div class="col-md-9">
+          <h2> Text </h2>
+          <div v-for="[tdp_id, sub_paragraphs] in ordering">
+            <a v-bind:href="'/tdps/' + tdp_id" target="_blank"> {{ tdps[tdp_id]['team'] }} {{ tdps[tdp_id]['year'] }} </a>
+            <div v-for="[paragraph_id, sub_sentences] in sub_paragraphs">
+              <b>{{ paragraphs[paragraph_id]['title'] }}</b>
+              <div v-for="sentence_id in sub_sentences" v-html="highlight(sentences[sentence_id]['text_raw'])" style="display: inline"></div>
+            </div> 
+            <br>
           </div>
+        </div>
 
-          
+        <!-- Begin images -->
+        <div class="col-md-3">
+          <h2> Images </h2>
+          <!-- for each image -->
+          <div class="text-center" v-for="image in ordering_images" style="margin:10px; border: 1px solid black">
+            <a :href="images[image]['filename'].slice(1)" target="_blank">
+              <img :src="'/thumbnails/' + images[image]['filename']" height="200px" />
+            </a>
+            <br>
+            <b><a :href="'/tdps/' + image_to_tdp[image]" target="_blank">{{ tdps[image_to_tdp[image]]['team'] }} {{ tdps[image_to_tdp[image]]['year'] }}</a></b>
+            {{ images[image]['text_raw'] }}
+          </div>
+        </div><!-- End images -->
 
       </div> <!-- // Main row -->
+      
     </div> <!-- Container -->
 
     <script>
@@ -160,25 +147,29 @@
 
     function highlight_words(text, words){
         words.forEach(word => {
-            word = " " + word
+            word = word
             indices = getIndicesOf(word, text, false)
             indices.slice().reverse().forEach(index => {
                 text = text.slice(0, index) + "<span style='background-color: yellow;'>" + text.slice(index, index + word.length) + "</span>" + text.slice(index + word.length)
             })
         })
-        return "&#8226 " + text
+        // return text
+        return "&nbsp &#8226 &nbsp" + text
     }
 
     var app = new Vue({
         el: '#app',
         data: {
             query: "",
-            sentences: [],
-            sentences_by_tdp: [],
-            paragraphs: [],
             tdps: [],
-            tdp_order: [],
+            paragraphs: [],
+            sentences: [],
+            images: [],
+            ordering: [],
+            ordering_images: [],
+            image_to_tdp: {},
             query_words: [],
+
             show_example_query: true,
             example_queries: [
               "What is a better dribbler material ? Silicon or rubber ?",
@@ -198,29 +189,38 @@
               this.show_example_query = false 
               this.latest_query = this.query
               postQuery(
-                  this.query,
-                  response => {
-                      this.sentences = response.data['sentences']
-                      this.sentences_by_tdp = response.data['sentences_by_tdp']
-                      this.paragraphs = response.data['paragraphs']
-                      this.tdps = response.data['tdps']
-                      this.tdp_order = response.data['tdp_order'],
-                      this.query_words = response.data['query_words']
-                      this.search_in_progress = false
-                      console.log(this.query_words)
-                  },
-                  error => {
-                      this.search_in_progress = false
-                      this.server_error = true
-                  }
+                this.query,
+                response => {
+                  this.tdps = response.data['tdps']
+                  this.paragraphs = response.data['paragraphs']
+                  this.sentences = response.data['sentences']
+                  this.images = response.data['images']
+                  this.ordering = response.data['ordering']
+                  this.ordering_images = response.data['ordering_images']
+                  this.image_to_tdp = response.data['image_to_tdp']
+                  this.query_words = response.data['query_words']
+                  
+                  /*
+                  this.sentences_by_tdp = response.data['sentences_by_tdp']
+                  this.paragraphs = response.data['paragraphs']
+                  this.tdps = response.data['tdps']
+                  this.tdp_order = response.data['tdp_order'],
+                  */
+                  this.search_in_progress = false
+                },
+                error => {
+                    this.search_in_progress = false
+                    this.server_error = true
+                }
               )
             },
             getTdp: function(tdp_id){
                 tdp_found = null
                 this.tdps.forEach(tdp => {
-                    if(tdp['id'] == tdp_id){
-                        tdp_found = tdp
-                    }
+                  if(tdp['id'] == tdp_id){
+                    tdp_found = tdp
+                    return
+                  }
                 })
                 if (tdp_found == null){
                     return "Error: not found"
@@ -228,17 +228,33 @@
                 return tdp_found
             },
             getParagraph: function(paragraph_id){
-                paragraph_found = null
-                this.paragraphs.forEach(paragraph => {
-                    if(paragraph['id'] == paragraph_id){
-                        paragraph_found = paragraph
-                        console.log("Found paragraph with id " + paragraph_id)
-                    }
-                })
-                if (paragraph_found == null){
-                    console.log("Could not find paragraph with id " + paragraph_id)
+              paragraph_found = null
+              this.paragraphs.forEach(paragraph => {
+                if(paragraph['id'] == paragraph_id){
+                  paragraph_found = paragraph
+                  return
+                  // console.log("Found paragraph with id " + paragraph_id)
                 }
-                return paragraph_found
+              })
+              if (paragraph_found == null){
+                console.log("Could not find paragraph with id " + paragraph_id)
+              }
+              return paragraph_found
+            },
+            getSentence: function(sentence_id){
+              sentence_found = null
+              this.sentences.forEach(sentence => {
+                if(sentence['id'] == sentence_id){
+                  sentence_found = sentence
+                  return
+                }else{
+                  console.log(sentence['id'], " != ", sentence_id)
+                }
+              })
+              if (sentence_found == null){
+                console.log("Could not find sentence with id " + sentence_id)
+              }
+              return sentence_found
             },
             highlight: function(text){
                 return highlight_words(text, this.query_words)

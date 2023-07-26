@@ -48,9 +48,11 @@ def static_logo(filename):
 
 @app.route('/images/<year>/<filename>')
 def tdp_image(year, filename):
-    print(filename)
-    print(year)
     return send_from_directory(os.path.join("images", year), filename)
+
+@app.route('/thumbnails/images/<year>/<filename>')
+def tdp_thumbnail(year, filename):
+    return send_from_directory(os.path.join("thumbnails", "images", year), filename)
 
 def tdps(request, groupby=None):
     tdps = db_instance.get_tdps()
@@ -98,7 +100,7 @@ def get_tdps_id(id):
 
 @app.get("/query")
 def get_query():
-    return send_from_directory('templates', 'query2.html')
+    return send_from_directory('templates', 'query.html')
 
 @app.get("/api/tdps")
 def get_api_tdps():
