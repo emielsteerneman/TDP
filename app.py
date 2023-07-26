@@ -8,6 +8,7 @@ import threading
 from flask import Flask, render_template, request, send_from_directory
 import Database
 from Database import instance as db_instance
+from Database_tdp_views import instance as db_instance_tdp_views
 import utilities as U
 from Embeddings import instance as embed_instance
 import Search
@@ -28,8 +29,6 @@ if os.getenv('TELEGRAM_TOKEN') is not None and os.getenv('TELEGRAM_CHAT_ID') is 
     TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
     bot = Bot(token=TELEGRAM_TOKEN)
     print("[app] Created telegram bot")
-
-query_log_file = open("query_log_file.txt", "a")
 
 @app.route('/TDPs/<year>/<filename>')
 def download_file(year, filename):
@@ -90,6 +89,11 @@ def hello():
 def get_tdps_id(id):
     tdp_db = db_instance.get_tdp_by_id(id)
     filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
+    entry_string = db_instance_tdp_views.post_tdp(tdp_db)
+
+    thread = threading.Thread(target=send_to_telegram, args=[entry_string])
+    thread.start()
+
     return render_template('tdp.html', tdp=tdp_db, filepath=filepath)
 
 @app.get("/query")
@@ -107,26 +111,8 @@ def get_api_tdps():
 def get_api_tdps_id_paragraphs(tdp_id):
     tdp = db_instance.get_tdp_by_id(tdp_id)
     print("[app] Retrieving paragraphs for TDP", tdp.filename)
-    
     paragraphs = db_instance.get_paragraphs_by_tdp(Database.TDP_db(id=tdp_id))
-    return [ paragraph.to_dict() for paragraph in paragraphs ]
-@app.post("/api/tdps/<tdp_id>/paragraphs")
-def post_api_tdps_id_paragraphs(tdp_id):
-    body = request.get_json()
-    db_instance.post_paragraph(Database.Paragraph_db.from_dict(body))
-
-    # sentences, embeddings = U.paragraph_to_sentences_embeddings(text)
-    # db_instance.post_sentences(paragraph_id, sentences, embeddings)
-
-    paragraphs = db_instance.get_paragraphs(tdp_id)
-    return [ paragraph.to_dict() for paragraph in paragraphs ]
-
-@app.delete("/api/tdps/<tdp_id>/paragraphs/<paragraph_id>")
-def delete_api_tdps_id_paragraphs(tdp_id, paragraph_id):
-    paragraph_db = Database.Paragraph_db(id=paragraph_id)
-    db_instance.delete_paragraph(paragraph_db)
-    paragraphs = db_instance.get_paragraphs(tdp_id)
-    return [ paragraph.to_dict() for paragraph in paragraphs ]
+    return [ paragraph.to_json_dict() for paragraph in paragraphs ]
 
 """ /api/query """
 
@@ -136,14 +122,25 @@ def post_api_query():
     query = body['query']
 
     print("Sentence search")
+    time_now = time.time()
     sentences, sentence_scores = search_instance_sentences.search(query, R=0.5, n=100)
+    duration_sentence_search = time.time() - time_now
     sentence_ids = [ sentence.id for sentence in sentences ]
-    print("Image search")
-    images, image_scores = search_instance_images.search(query, R=0.5, n=15)
-    image_ids_image_search = [ image.id for image in images ]
-    print("Paragraph search")
-    paragraphs, paragraph_scores = search_instance_paragraphs.search(query, R=0.5, n=15)
     
+    print("Image search")
+    time_now = time.time()
+    images, image_scores = search_instance_images.search(query, R=0.5, n=15)
+    duration_image_search = time.time() - time_now
+    image_ids_image_search = [ image.id for image in images ]
+
+    print("Paragraph search")
+    time_now = time.time()
+    paragraphs, paragraph_scores = search_instance_paragraphs.search(query, R=0.5, n=15)
+    duration_paragraph_search = time.time() - time_now
+
+
+
+    time_now = time.time()
     ## Find the images that belong to the paragraphs
     paragraph_to_images = [ db_instance.get_paragraph_image_mapping_by_paragraph(p) for p in paragraphs ]
     paragraph_to_images = [ m for m in paragraph_to_images if m is not None ]
@@ -151,12 +148,15 @@ def post_api_query():
     
     ## Add the images from the image search to the images from the paragraph search
     image_ids = image_ids_image_search + image_ids_paragraph_search
-    image_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, image_ids, [])
+    image_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, image_ids, []) # Why not simply list(set( .. )) ?
     images = [ db_instance.get_image_by_id(id) for id in image_ids ]
     ordering_images = [ image.id for image in images ]    
-    
-    
-    # image ids to paragraph ids
+    duration_image_stuff = time.time() - time_now
+
+
+
+    time_now = time.time()
+    # image ids to tdp ids
     image_to_tdp = { image.id : db_instance.get_tdp_id_by_image(image)['id'] for image in images }
     tdp_ids_images = list( image_to_tdp.values() )
         
@@ -166,11 +166,13 @@ def post_api_query():
     paragraphs = [ db_instance.get_paragraph_by_id(id) for id in paragraph_ids ]    
     # Get TDPs that the paragraphs belong to (and add image tdp ids)
     tdp_ids = [ p.tdp_id for p in paragraphs ] + tdp_ids_images
-    tdp_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, tdp_ids, [])
+    tdp_ids = functools.reduce(lambda lst, b: lst + [b] if b not in lst else lst, tdp_ids, []) # Why not simply list(set( .. )) ?
     tdps = [ db_instance.get_tdp_by_id(id) for id in tdp_ids ]
-    
+    duration_tdp_stuff = time.time() - time_now
+
 
     ### Sentence ordering. Ensure that the most relevant sentences are shown first    
+    time_now = time.time()
     ordering = {}
     for sentence in sentences:
         sid, pid = sentence.id, sentence.paragraph_id
@@ -181,46 +183,60 @@ def post_api_query():
     # Convert dict to list, since dict ordering is not preserved when jsonified
     # https://github.com/pallets/flask/issues/974
     ordering = [ [tid, [ [pid, s] for pid, s in p.items() ] ] for tid, p in ordering.items()]
-    
+    duration_ordering = time.time() - time_now
+
+
     query_words = Search.process_text_for_keyword_search(query).split()
 
+    # Convert to dicts
+    time_now = time.time()
+    tdps = { tdp.id : tdp.to_dict() for tdp in tdps }
+    paragraphs = { paragraph.id : paragraph.to_json_dict() for paragraph in paragraphs }
+    sentences = { sentence.id : sentence.to_json_dict() for sentence in sentences }
+    images = { image.id : image.to_json_dict() for image in images }
+    duration_to_dict = time.time() - time_now
+
+
+    # Send results to telegram
+    telegram_time = time.time()
+    message = f"Query: \"{query}\"\n\n"
+    message += "Top results:\n\n"
+    for i in range(1):
+        print(ordering[i])
+        tid, pids = ordering[i]
+        message += f"__{tdps[tid]['team']} {tdps[tid]['year']}__\n"
+        for pid, sids in pids:
+            message += f"**{paragraphs[pid]['title']}**\n"
+            for sid in sids:
+                message += f"{sentences[sid]['text_raw']}. "
+            message += "\n"
+
+        if len(sentences) <= i: break
+
+    message += "\n\n"    
+    message += f"sentences: {duration_sentence_search:.2f}s | "
+    message += f"images: {duration_image_search:.2f}s | "
+    message += f"paragraphs: {duration_paragraph_search:.2f}s | "
+    message += f"image stuff: {duration_image_stuff:.2f}s | "
+    message += f"tdp stuff: {duration_tdp_stuff:.2f}s | "
+    message += f"ordering: {duration_ordering:.2f}s | "
+    message += f"to_dict: {duration_to_dict:.2f}s\n"
+
+    thread = threading.Thread(target=send_to_telegram, args=[message])
+    thread.start()
+    print(f"[app] Sent message to telegram in {time.time() - telegram_time:.2f}s")
+
     return {
-        "tdps": { tdp.id : tdp.to_dict() for tdp in tdps },
-        "paragraphs": { paragraph.id : paragraph.to_json_dict() for paragraph in paragraphs },
-        "sentences": { sentence.id : sentence.to_json_dict() for sentence in sentences },
-        "images": { image.id : image.to_json_dict() for image in images },
+        "tdps": tdps,
+        "paragraphs": paragraphs,
+        "sentences": sentences,
+        "images": images,
         "ordering": ordering,
         "ordering_images": ordering_images,
         "image_to_tdp": image_to_tdp,
         "query_words": query_words
     }    
 
-    
-    # Send results to telegram
-    telegram_time = time.time()
-    message = f"Query: \"{query}\"\n\n"
-    message += "Top 3 results:\n\n"
-    for i in range(3):
-        if len(sentences) <= i: break
-        sentence = sentences[i]
-        tdp = next(tdp for tdp in tdps if tdp['id'] == sentence['tdp_id'])
-        message += f"{i} ({scores[i]:.2f}): {tdp['team']} {tdp['year']}\n {sentence['text_raw']} {sentence['text_raw']}\n\n"
-    
-    thread = threading.Thread(target=send_to_telegram, args=[message])
-    thread.start()
-    
-    query_log_file.write(message)
-    query_log_file.flush()
-    
-    print(f"[app] Sent message to telegram in {time.time() - telegram_time:.2f}s")
-
-@app.post("/tdps/<id>")
-def post_tdps_id(id):
-    # Store text from field 'textfield' in database
-    text = request.form.get('textfield')
-    db_instance.post_text(id, text)
-    
-    return get_tdps_id(id)
 
 @app.get("/tdps")
 def get_tdps():

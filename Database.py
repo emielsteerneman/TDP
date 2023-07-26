@@ -2,6 +2,7 @@ from __future__ import annotations
 import sqlite3
 import io
 import numpy as np
+import functools
 
 def dict_factory(cursor, row):
     d = {}
@@ -246,14 +247,14 @@ class Paragraph_Image_Mapping_db:
      
 class Database:
 
-	def __init__(self):
+	def __init__(self, db_path:str="database.db"):
 
 		# Converts np.array to TEXT when inserting
 		sqlite3.register_adapter(np.ndarray, adapt_array)
 		# Converts TEXT to np.array when selecting
 		sqlite3.register_converter("NP_ARRAY", convert_array)
 
-		self.conn = sqlite3.connect('database.db', check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
+		self.conn = sqlite3.connect(db_path, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
 		self.conn.row_factory = dict_factory
 		print("[DB] Database opened")
 
@@ -500,7 +501,7 @@ class Database:
 
 	def get_sentences_exhaustive(self):
 		sentences = self.conn.execute('''
-   			SELECT sentences.*, paragraphs.id AS paragraph_id, tdps.id AS tdp_id FROM sentences
+   			SELECT sentences.*, paragraphs.id AS paragraph_id, tdps.id AS tdp_id, tdps.team, tdps.year FROM sentences
 			INNER JOIN paragraphs ON sentences.paragraph_id = paragraphs.id
 			INNER JOIN tdps ON paragraphs.tdp_id = tdps.id''').fetchall()
   		
@@ -630,5 +631,14 @@ class Database:
 			INNER JOIN paragraphs ON paragraphs.id = paragraph_image_mapping.paragraph_id
 			INNER JOIN tdps ON tdps.id = paragraphs.tdp_id
 			WHERE images.id = ?''', (image_db.id,)).fetchone()
+
+	@functools.cache
+	def get_sentences_by_tdp_id(self, tdp_id:int) -> list[Sentence_db]:
+		return self.conn.execute('''
+			SELECT sentences.*, tdps.year, tdps.team, tdps.is_etdp FROM tdps
+			INNER JOIN paragraphs ON paragraphs.tdp_id = tdps.id
+			INNER JOIN sentences ON sentences.paragraph_id = paragraphs.id
+			WHERE tdps.id = ?''', (tdp_id,)).fetchall()
+			
 
 instance = Database()

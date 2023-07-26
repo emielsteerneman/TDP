@@ -5,7 +5,8 @@ import time
 import os 
 
 import Database
-from Database import instance as db_instance
+db_instance = Database.Database("database.db")
+# from Database import instance as db_instance
 from Embeddings import instance as embed_instance
 import fill_database_tests
 from Semver import Semver
@@ -84,14 +85,7 @@ def extract_images_and_sentences(doc:fitz.Document) -> tuple[list[Sentence], lis
                 for lines in block["lines"]:  # iterate through the text lines
                     for span in lines["spans"]:  # iterate through the text spans
                         # Replace weird characters that python can't really deal with (OMID 2020 4.1 'score')
-                        # a = span['text']
                         span['text'] = span['text'].encode("ascii", errors="ignore").decode()
-                        # b = span['text']
-                        # if len(a) != len(b):
-                        #     print(f"Replaced {len(a) - len(b)} characters")
-                        #     print(a)
-                        #     print(b)
-                        #     print()
                         # Replace all whitespace with a single space, and remove leading and trailing whitespace
                         span['text'] = re.sub(r"\s+", " ", span['text']).strip()
                         # Filter out sentences that are now empty (yes it happens) (ACES 2015)
@@ -116,7 +110,7 @@ def store_image(image:Image, filepath:str) -> None:
     ## Create thumbnail
     image = PIL.Image.open(filepath)
     image.thumbnail((256, 256))
-    filepath_thumb = os.path.join("thumbnails", filepath)
+    filepath_thumb = os.path.join(THUMBNAILS_DIR, filepath)
     filepath_thumb = os.path.normpath(filepath_thumb)
     os.makedirs(os.path.dirname(filepath_thumb), exist_ok=True)
     image.save(filepath_thumb)
@@ -213,39 +207,100 @@ def match_image_with_sentences(image:list, sentences:list[Sentence], images:list
     return sentences, figure_number
 
 def find_paragraph_headers(sentences:list[Sentence]) -> tuple[list[list[Sentence]], int, int]:
-    # Find all bold sentences
-    bold_sentences = [ _ for _ in sentences if _['bold'] ]
-    # Group by y
-    bold_sentence_lines = groupby_y_fontsize_page(bold_sentences)
+    """
+    Find all paragraph headers in the document. The assumption is that all paragraph headers are bold and 
+    start with a Semver. This is not always the case, but it is the case for most TDPs.
+    """
+    p = lambda *args, **kwargs: print(* (['[fph]']+list(args)), **kwargs)
 
     abstract_id:int = -1
     references_id:int = 999999 # Assuming there will be no more than 999999 sentences in a TDP
-    
+
+    p()
+    p("Finding paragraph headers")
+
+
     # Extract all groups that start with a Semver
     semver_groups:list[tuple[Semver, list[Sentence]]] = []
+
+    selected_sentences = []
     
-    for group in bold_sentence_lines:
-        text = " ".join([ _['text'] for _ in group ])
-        # Find abstract and references while we're at it            
-        if abstract_id == -1 and "abstract" in text.lower(): abstract_id = group[0]['id']
-        if references_id == 999999 and "reference" in text.lower(): references_id = group[0]['id']
-        # Find groups that begin with a Semver
-        possible_semver = text.split(" ")[0]
-        if Semver.is_semver(possible_semver):
-            semver_groups.append([Semver.parse(possible_semver), group])
+    STAGE = 0
     
+    while True:
+        if 3 <= STAGE: break
+
+        # Find all bold sentences
+        if STAGE == 0:
+            selected_sentences = [ _ for _ in sentences if _['bold'] ]
+            p("Found", len(selected_sentences), "bold sentences")
+
+        # If there are no bold sentences with valid semvers, try search for sentences with font 'CMBX'
+        if STAGE == 1:
+            selected_sentences = [ _ for _ in sentences if _['font'].startswith('CMBX') ]
+            p("Found", len(selected_sentences), "CMBX sentences")
+
+        # If there are also no CMBX sentences with valid semvers, try all sentences, excluding
+        #  the most common font (which is most likely normal text)
+        if STAGE == 2:
+            # Count font occurrences
+            font_occurrences = {}
+            for sentence in sentences:
+                if sentence['font'] not in font_occurrences: font_occurrences[sentence['font']] = 0
+                font_occurrences[sentence['font']] += 1
+            # Sort by occurrences
+            font_occurrences = sorted([ (k, v) for v, k in font_occurrences.items() ], reverse=True)
+            most_common_font = font_occurrences[0][1]
+            
+            # Select all sentences that are not the most common font
+            selected_sentences = [ _ for _ in sentences if _['font'] != most_common_font ]
+            p("Found", len(selected_sentences), "non-common-font sentences")
+        
+        # Group by y
+        selected_sentence_lines = groupby_y_fontsize_page(selected_sentences)
+        
+        # (Re)set abstract and references ids
+        abstract_id:int = -1
+        references_id:int = 999999 # Assuming there will be no more than 999999 sentences in a TDP
+
+        for group in selected_sentence_lines:
+            text = " ".join([ _['text'] for _ in group ])
+            # Find abstract and references while we're at it            
+            if abstract_id == -1 and "abstract" in text.lower(): abstract_id = group[0]['id']
+            if references_id == 999999 and "reference" in text.lower(): references_id = group[0]['id']
+            # Find groups that begin with a Semver
+            possible_semver = text.split(" ")[0]
+            if Semver.is_semver(possible_semver):
+                semver_groups.append([Semver.parse(possible_semver), group])
+    
+        if len(semver_groups): break
+
+        p("WARNING No semver groups found, trying next stage")
+        STAGE += 1
+
+    ############ Let's hope we found some semvers using one of the stages ############
+
+    if not len(semver_groups):
+        p("WARNING No semver groups found")
+        return [], abstract_id, references_id
+
     # Set semver id to group id, to keep track
     for i_group, group in enumerate(semver_groups):
         group[0].id = i_group
     
+    p("Found", len(semver_groups), "semver groups")
+
+    if len(semver_groups) == 0:
+        p("WARNING No semver groups found")
+
     semvers = [ _[0] for _ in semver_groups ]
     semvers = U.resolve_semvers(semvers)
     
     paragraph_titles = [ semver_groups[semver.id][1] for semver in semvers ]
-    
-    # for sentence_group in paragraph_titles:
-    #     print([ _['id'] for _ in sentence_group ]) 
-               
+
+    for title in paragraph_titles:
+        p("Paragraph title:", " ".join([ _['text'] for _ in title ]))
+
     return paragraph_titles, abstract_id, references_id
 
 def find_pagenumbers(sentences):
@@ -420,6 +475,12 @@ tdps = U.find_all_TDPs()
 # tdps = ["./TDPs/2015/2015_ETDP_RoboDragons.pdf"]
 # tdps = ["./TDPs/2020/2020_TDP_OMID.pdf"]
 
+# All TDPS that use F-font
+# tdps = ["./TDPs/2020/2020_ETDP_TIGERs_Mannheim.pdf", "./TDPs/2016/2016_ETDP_TIGERs_Mannheim.pdf", "./TDPs/2020/2020_TDP_ITAndroids.pdf", "./TDPs/2013/2013_TDP_RoboJackets.pdf", "./TDPs/2013/2013_TDP_TIGERs_Mannheim.pdf", "./TDPs/2022/2022_TDP_ITAndroids.pdf"]
+# TDP that uses TT** font
+# tdps = ["./TDPs/2014/2014_ETDP_KIKS.pdf"]
+
+
 """ Load all TDPs to be parsed """
 # Blacklist because these papers don't contain loadable text. The text seems to be images or something weird..
 tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
@@ -427,10 +488,42 @@ tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TD
 tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") 
 # Blacklist because they also have a 2014 ETDP which contains this TDP and more
 tdp_blacklist.append("./TDPs/2014/2014_TDP_RoboDragons.pdf") 
+
+tdp_blacklist.append("./TDPs/2011/2011_TDP_MRL.pdf") 
+tdp_blacklist.append("./TDPs/2013/2013_TDP_MRL.pdf") 
+tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf") 
+
+
 tdps = [ _ for _ in tdps if _ not in tdp_blacklist ]
 
 
-PAGE_WIDTH = 0
+# tdps = ["./TDPs/2010/2010_TDP_Botnia_Dragon_Knights.pdf", "./TDPs/2011/2011_TDP_ODENS.pdf", "./TDPs/2011/2011_ETDP_RoboDragons.pdf", "./TDPs/2011/2011_TDP_RoboDragons.pdf"]
+
+
+# TT27o00
+# ./TDPs/2014/2014_ETDP_KIKS.pdf
+
+# WTF is going on with this paper
+# ./TDPs/2012/2012_TDP_RoboJackets.pdf
+# ./TDPs/2011/2011_TDP_ODENS.pdf
+
+# This paper should work fine with bold method
+# ./TDPs/2014/2014_TDP_ACES.pdf <- uses light instead of bold
+# ./TDPs/2014/2014_TDP_Owaribito-CU.pdf <- uses just font size
+
+# No Semvers
+# ./TDPs/2014/2014_TDP_RFC_Cambridge.pdf
+# Unparseable Semvers
+# ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
+
+
+IMAGES_DIR = "./images"
+THUMBNAILS_DIR = "./thumbnails"
+
+total_tdps_added = 0
+total_paragraphs_added = 0
+total_sentences_added = 0
+total_images_added = 0
 
 t_start = time.time()
 for i_tdp, tdp in enumerate(tdps):
@@ -441,7 +534,7 @@ for i_tdp, tdp in enumerate(tdps):
         tdp_instance = U.parse_tdp_name(tdp)
 
         # Create directory for images if it doesn't exist
-        images_dir = os.path.join("./images", tdp_instance.year)
+        images_dir = os.path.join(IMAGES_DIR, tdp_instance.year)
         os.makedirs( images_dir, exist_ok=True)
         
         ### In the following steps, try to filter out as many sentence that are NOT normal paragraph sentences
@@ -450,6 +543,9 @@ for i_tdp, tdp in enumerate(tdps):
         
         # Extract images and sentences
         sentences, images = extract_images_and_sentences(doc)
+
+        print("\n\n\n")
+        print(f"{tdp.ljust(50)} | TDP {i_tdp+1}/{len(tdps)} | {len(sentences)} sentences | {len(images)} images")
         
         if not len(sentences):
             print(f"\nWarning: No sentences found in {tdp}\n")
@@ -485,9 +581,9 @@ for i_tdp, tdp in enumerate(tdps):
         # Extend sentences_id_mask with found pagenumbers
         sentences_id_mask += [ _['id'] for _ in pagenumber_sentences ]       
         
-        
         ### Find all sentences that can make up a paragraph title
         paragraph_titles, abstract_id, references_id = find_paragraph_headers(sentences)
+
         # Extend sentences_id_mask with found paragraph titles, and abstract id and references id
         for sentence_group in paragraph_titles:
             sentences_id_mask += [ _['id'] for _ in sentence_group ]
@@ -495,15 +591,11 @@ for i_tdp, tdp in enumerate(tdps):
         sentences_id_mask += list(range(0, abstract_id+1))
         sentences_id_mask += list(range(references_id, sentences[-1]['id'] + 1))
 
-        
         #### Run tests if possible
         test_paragraph_titles(tdp, paragraph_titles)
         test_image_description(tdp, images)
         test_pagenumbers(tdp, pagenumber_sentences)   
-        
-        
-    
-
+      
         ### Split up remaining sentences into paragraphs
         # Get ids of sentences that are paragraph titles
         paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_titles ])
@@ -576,7 +668,8 @@ for i_tdp, tdp in enumerate(tdps):
         # print(tdp)
         tdp_instance = U.parse_tdp_name(tdp)
         tdp_instance = db_instance.post_tdp(tdp_instance)
-    
+        total_tdps_added += 1
+
         # Then store each paragraph and its sentences and its images
         for i_paragraph, paragraph in enumerate(paragraphs):
             print(f"* {tdp.ljust(50)} | TDP {i_tdp+1}/{len(tdps)} - paragraph {i_paragraph+1}/{len(paragraphs)}", end="    \r")
@@ -584,6 +677,7 @@ for i_tdp, tdp in enumerate(tdps):
             paragraph_db = Database.Paragraph_db( tdp_id=tdp_instance.id, title=paragraph['title'], text_raw=paragraph['text_raw'], text_processed=paragraph['text_processed'], embedding=embedding )
             
             paragraph_db = db_instance.post_paragraph(paragraph_db)
+            total_paragraphs_added += 1
             
             # Store all sentences
             sentences_db = []
@@ -594,6 +688,7 @@ for i_tdp, tdp in enumerate(tdps):
             # TODO why don't I have a function to store just one sentence?
             ids = [ _.paragraph_id for _ in sentences_db ]
             db_instance.post_sentences(sentences_db)
+            total_sentences_added += len(sentences_db)
             
             # Store all images and mappings
             for image in paragraph['images']:
@@ -602,7 +697,8 @@ for i_tdp, tdp in enumerate(tdps):
                 embedding = embed_instance.embed(text_processed)
                 image_db = Database.Image_db(filename=image['filepath'], text_raw=text_raw, text_processed=text_processed, embedding=embedding)
                 image_db = db_instance.post_image(image_db)
-                
+                total_images_added += 1
+
                 # Store paragraph to image mapping
                 mapping_db = Database.Paragraph_Image_Mapping_db(paragraph_id=paragraph_db.id, image_id=image_db.id)
                 mapping_db = db_instance.post_paragraph_image_mapping(mapping_db)
@@ -610,6 +706,11 @@ for i_tdp, tdp in enumerate(tdps):
                       
     except Exception as e:
         print(f"\nError with TDP {tdp}\n")
+        print(e)
         # raise e
 
-print(f"Finished adding {len(tdps)} TDPs to the database in {int(time.time() - t_start)} seconds.")
+print(f"Finished in {int(time.time() - t_start)} seconds.")
+print(f"Total TDPs added: {total_tdps_added}")
+print(f"Total paragraphs added: {total_paragraphs_added}")
+print(f"Total sentences added: {total_sentences_added}")
+print(f"Total images added: {total_images_added}")

@@ -44,7 +44,7 @@ class Search:
             self.items_db = db_instance.get_paragraphs()
         if source == self.SOURCE_IMAGES:
             self.items_db = db_instance.get_images()
-            
+        self.source = source
         print(f"[Search] Loaded {len(self.items_db)} items from database")
         
         self.reload_corpus()
@@ -92,11 +92,12 @@ class Search:
         for i in argsort:
             print(f"{i} - {similarities[i]:.2f} - {similarities_normalized[i]:.2f} vs {doc_scores_normalized[i]:.2f} | {self.items_db[i].text_raw}")
         
-        print("\n[Search] Top 3 keyword results")
-        argsort = np.argsort(doc_scores)[::-1][:3]
-        for i in argsort:
-            print(f"{i} - {doc_scores[i]:.2f} - {doc_scores_normalized[i]:.2f} vs {similarities_normalized[i]:.2f} | {self.items_db[i].text_raw}")
-        print()
+        if(self.source == self.SOURCE_SENTENCES):
+            print("\n[Search] Top 3 keyword results")
+            argsort = np.argsort(doc_scores)[::-1][:3]
+            for i in argsort:
+                print(f"{i} - {doc_scores[i]:.2f} - {doc_scores_normalized[i]:.2f} vs {similarities_normalized[i]:.2f} | {self.items_db[i].text_raw}")
+            print()
 
         """ Calculate item scores """
         item_scores = R * np.array( similarities_normalized ) + (1-R) * np.array( doc_scores_normalized )
