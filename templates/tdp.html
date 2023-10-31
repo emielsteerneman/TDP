@@ -67,51 +67,10 @@
           <div style="overflow-y: scroll; overflow-x: hidden; padding-right: 10px;">
             <h3> Paragraphs </h3>
             <div v-for="paragraph in paragraphs" :key="paragraph">
-                <!--
-                <div class="col-md-2" style="padding-bottom: 3px">
-                  <button class="form-control btn btn-primary btn-sm" v-on:click="onEdit(paragraph)"> Read </button>
-                </div>
-                -->
-                  <div style="display:inline; font-size:14px; font-weight: bold;"> {{ paragraph['title'] }} </div>
-                <!--
-                <div class="col-md-2">
-                  <button class="form-control btn btn-danger" v-on:click="onDelete(paragraph)">Delete</button>
-                </div>
-                -->
-                <!-- <p style="font-size: 12px;"> {{ paragraph['text_raw'] }} </p> -->
-                <br>
+              <div style="display:inline; font-size:14px; font-weight: bold;"> {{ paragraph['title'] }} </div>
+              <br>
             </div>
           </div>
-          
-          <!-- Active paragraph 
-          <div class="row">
-              <div class="col-md-4">
-                <input type="text" name="title" class="form-control" v-model="active_paragraph.title" placeholder="Paragraph title">
-              </div>
-              <div class="col-md-1">
-                <input type="text" name="title" class="form-control" v-model="active_paragraph.id" placeholder="Paragraph title" disabled>
-              </div>
-              <div class="col-md-2">
-                <button class="form-control btn btn-success" v-on:click="onSubmit">Save</button>
-              </div>
-              <div class="col-md-2">
-                <button class="form-control btn btn-warning" v-on:click="onClear">Clear</button>
-              </div>
-          </div>
-          -->
-
-          <!--
-          <p v-model='active_paragraph.text_raw'>{{ active_paragraph.text_raw }}</p>
-          -->
-
-          <!--
-          <br>
-          <div class="row">
-              <div class="col-md-12">
-                <textarea rows="8" name="textfield" class="form-control" @paste="onTextfieldChange" @change="onTextfieldChange" v-model="active_paragraph.text"></textarea>
-              </div>
-          </div>
-          -->
           {% endraw %}
 
         </div> <!-- Active paragraph -->
@@ -125,22 +84,6 @@
     {% raw %}
     <script>
 
-    function submitParagraph(id, title, text, callback) {
-      console.log("submitting paragraph", id, title)
-      axios.post("/api/tdps/" + id + "/paragraphs", {
-        id: id,
-        tdp_id: TDP_ID,
-        title: title,
-        text: text,
-      }).then(callback)
-    }
-
-    function deleteParagraph(id, callback) {
-      console.log("deleting paragraph", id)
-      axios.delete("/api/tdps/" + TDP_ID + "/paragraphs/" + id)
-        .then(callback)
-    }
-
     var app = new Vue({
         el: '#app',
         data: {
@@ -151,39 +94,6 @@
                 title: "",
                 text: "",
             },
-        },
-        methods: {
-          onSubmit: function(){ submitParagraph(
-            this.active_paragraph.id,
-            this.active_paragraph.title,
-            this.active_paragraph.text,
-            response => {
-              this.paragraphs = response.data
-              this.onClear()
-            }
-          )},
-          onEdit: function(paragraph) {
-            this.active_paragraph = JSON.parse(JSON.stringify(paragraph));
-          },
-          onDelete: function(paragraph) {
-            console.log("deleting", paragraph)
-            deleteParagraph(paragraph.id, response => {
-              this.paragraphs = response.data
-            })
-          },
-          onClear: function() {
-            this.active_paragraph = {
-                id: -1,
-                title: "",
-                text: "",
-            }
-          },
-
-
-          onTextfieldChange: function() {
-            console.log(event)
-            this.active_paragraph.text = this.active_paragraph.text.replace(/[^a-zA-Z0-9 \.,]/g, ' ');
-          }
         },
         mounted: function() {
           axios.get("/api/tdps/" + TDP_ID + "/paragraphs")
