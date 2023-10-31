@@ -7,7 +7,7 @@ from Database import instance as db_instance
 from Semver import Semver
 
 
-def find_all_TDPs():
+def find_all_tdps():
     """Find all TDP pdf files in all subdirectories of current directory"""
     tdps = []
     for root, dirs, files in os.walk("."):
@@ -29,7 +29,7 @@ def parse_tdp_name(filepath):
     )
 
 def find_all_tdps_and_add_to_database(db):
-    tdps = find_all_TDPs()
+    tdps = find_all_tdps()
     parsed = [parse_tdp_name(tdp) for tdp in tdps]    
     for tdp in parsed:
         db.post_tdp(tdp)

@@ -463,7 +463,7 @@ def process_text_for_keyword_search(text:str) -> str:
     sentence = " ".join(words)
     return sentence
 
-tdps = U.find_all_TDPs()
+tdps = U.find_all_tdps()
 
 # tdps = list(fill_database_tests.test_cases_paragraphs.keys())
 
