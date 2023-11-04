@@ -56,6 +56,9 @@ def tdp_thumbnail(year, filename):
     return send_from_directory(os.path.join("thumbnails", "images", year), filename)
 
 def tdps(request, groupby=None):
+    
+    if groupby is None: groupby='year'
+
     tdps = db_instance.get_tdps()
     
     if groupby == 'team':
@@ -76,8 +79,6 @@ def tdps(request, groupby=None):
         years = { year: sorted(years[year], key=lambda _: _.team) for year in years }
         return render_template('tdps.html', data=years, groupby=groupby)
 
-    return render_template('tdps.html', data=tdps, groupby=groupby)
-
 def send_to_telegram(text):
     if bot is None: return
     coroutine = bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
@@ -85,8 +86,8 @@ def send_to_telegram(text):
     asyncio.get_event_loop().run_until_complete(coroutine)
 
 @app.get("/")
-def hello():
-    return tdps(request)
+def homepage():
+    return send_from_directory('templates', 'index.html')
 
 @app.get("/tdps/<id>")
 def get_tdps_id(id):
