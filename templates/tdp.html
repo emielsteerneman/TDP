@@ -16,71 +16,129 @@
     <title>{{ tdp['year'] }} - {{ tdp['team'] }}</title>
   </head>
   <body>
-    <div id="app" class="container">
-      <br>
-			<div class="row">
-				<div class="col-md-12 text-center" style="font-size: 20px;">
-					<b> RoboTeam Twente </b> <img src="/static/logos/RoboTeam Twente.png" width=50px> has won the Open Source Awards 2023! A big thanks to everyone voting for us!
-				</div>
-			</div>
-			<hr>
+    <div id="app">
 
-      <br>
-      <div class="row">
-        <div class="col-12 text-center   col-sm-12 text-sm-center   col-md-12   col-lg-6 text-lg-start">
-          <h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1>
+      <!-- Navbar Top -->
+      <nav class="navbar navbar-expand navbar-light bg-light fixed-top">
+        <div class="container">
+
+          <a class="navbar-brand" href="#">
+            <img src="/static/logos/RoboTeam Twente.png" alt="Logo" width="24" height="24" class="d-inline-block align-text-top">
+            RTT ETDP 
+          </a>
+          
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+
+          <div class="collapse navbar-collapse" id="navbarSupportedContent">
+
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+              <li class="nav-item">
+                <a class="nav-link" href="/tdps">TDPs by team</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#">TDPs by year</a>
+              </li>
+
+              <li class="nav-item">
+                <a class="nav-link" href="https://github.com/emielsteerneman/TDP">
+                  <img src="/static/github.png" alt="Logo" width="24" height="24">
+                  Github
+                </a>
+              </li>
+
+              <li class="nav-item">
+                <a class="nav-link" href="https://discordapp.com/channels/@me/emielsteerneman/">
+                  <img src="/static/discord.svg" alt="Logo" width="24" height="24">
+                  Discord
+                </a>
+              </li>
+            </ul>
+
+            <form class="d-flex ms-auto me-auto flex-fill" action="/query">
+              <input class="form-control" id="searchbox" type="search" placeholder="Search" name="q">
+              <button class="btn btn-outline-primary" type="submit">Search</button>
+            </form>
+
+          </div>
+
         </div>
-        <div class="col-6 text-start   col-sm-6   col-md-6   col-lg-3 text-lg-end">
-          <h1><a href="/tdps"> All TDPs </a></h1>
-        </div>  
-        <div class="col-6 text-end   col-sm-6  col-md-6   col-lg-3">
-          <h1><a href="/query"> Query </a></h1>
-        </div>  
-      </div>
+      </nav>
+      <!-- // Navbar Top -->
 
-
-      <div class="row" style='padding-top:10px; color: #AAA'>
-        <div class='col-md-8'>
-          Feedback or questions? Message me on <a style='display: inline' href="https://discordapp.com/channels/@me/emielsteerneman/"> Discord </a> (emielsteerneman) or at emielsteerneman@gmail.com  
+      <!-- Navbar Bottom -->
+      <nav class="navbar fixed-bottom bg-body-tertiary bg-dark border-bottom border-body" data-bs-theme="dark">
+        <div class="container">
+          <a class="navbar-brand">Winner of the Open Source Award 2023!</a>
         </div>
-        <div class="col-md-4 text-end">
-          <a href="https://github.com/emielsteerneman/TDP"> Github <img src="/static/github.png" width=20px></a>
-        </div>
-      </div>
+      </nav>
+      <!-- // Navbar Bottom -->
 
-      <hr>
+      <div class="container" style="padding-top: 75px;">
 
-      <div class="row">
-        <!-- PDF Viewer -->
-        <div class="col-md-10">
-            <object data="{{filepath}}" type="application/pdf" width="100%" height="900px">   
-            <p>Unable to display PDF file. <a href="{{filepath}}">Download</a> instead.</p>
-            <p> Are you on Firefox? Go to <code>about:config</code> and set <code>browser.download.open_pdf_attachments_inline</code> to <code>true</code>.</p> 
-            </object>
-        </div>
-
-        <!-- Paragraphs -->
-        <div class="col-md-2">
-            
-          <!-- For each paragraph -->
-          {% raw %}
-          <div style="overflow-y: scroll; overflow-x: hidden; padding-right: 10px;">
-            <h3> Paragraphs </h3>
-            <div v-for="paragraph in paragraphs" :key="paragraph">
-              <div style="display:inline; font-size:14px; font-weight: bold;"> {{ paragraph['title'] }} </div>
-              <br>
+        <!-- Switch button and Title -->
+        <div class="row">
+          <div class="col-md-3 text-left">
+            <div v-if="rendering_html">
+              <button class="btn btn-primary" v-on:click="rendering_html = false"> Switch to PDF view </button>
+            </div>
+            <div v-if="!rendering_html">
+              <button class="btn btn-primary" v-on:click="rendering_html = true"> Switch to HTML view </button>
             </div>
           </div>
-          {% endraw %}
 
-        </div> <!-- Active paragraph -->
+          <div class="col-7 text-end">
+            <h1>{{ tdp['year'] }} - {{ tdp['team'] }}</h1>
+          </div>
+        </div>
 
-      </div> <!-- Main row -->
-    </div> <!-- Container -->
-    
+        <div class="row">
+
+          <!-- HTML Viewer -->
+          <div class="col-md-10" v-if="rendering_html">
+            <!-- Load in different HTML file using a frame -->
+            <iframe src="/static/tdps/{{ tdp['id'] }}/tdp.html" width="100%" frameborder="0" scrolling="no" onload="resizeIframe(this)"></iframe>
+          </div>
+
+          <!-- PDF Viewer -->
+          <div class="col-md-10" v-if="!rendering_html">
+              <object data="{{filepath}}" type="application/pdf" width="100%" height="900px">   
+              <p>Unable to display PDF file. <a href="{{filepath}}">Download</a> instead.</p>
+              <p> Are you on Firefox? Go to <code>about:config</code> and set <code>browser.download.open_pdf_attachments_inline</code> to <code>true</code>.</p> 
+              </object>
+          </div>
+
+          <!-- Paragraphs -->
+          <div class="col-md-2">
+              
+            <!-- For each paragraph -->
+            {% raw %}
+            <div style="overflow-y: scroll; overflow-x: hidden; padding-right: 10px;">
+              <h3> Paragraphs </h3>
+              <div v-for="(paragraph, idx) in paragraphs" :key="idx">
+                <div style="display:inline; font-size:14px; font-weight: bold;"> {{ paragraph['title'] }} </div>
+                <br>
+              </div>
+            </div>
+            {% endraw %}
+
+          </div> <!-- Active paragraph -->
+
+        </div> <!-- Main row -->
+      </div> <!-- Container -->
+    </div>
+
+    <script>
+      function resizeIframe(obj) {
+        obj.style.height = obj.contentWindow.document.documentElement.scrollHeight + 'px';
+      }
+    </script>
+
     <script>
       TDP_ID = {{ tdp['id'] }}
     </script>
+
     {% raw %}
     <script>
 
@@ -94,6 +152,7 @@
                 title: "",
                 text: "",
             },
+            rendering_html: true
         },
         mounted: function() {
           axios.get("/api/tdps/" + TDP_ID + "/paragraphs")
