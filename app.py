@@ -9,6 +9,7 @@ from flask import Flask, render_template, request, send_from_directory
 import Database
 from Database import instance as db_instance
 from Database_tdp_views import instance as db_instance_tdp_views
+from Database_queries import instance as db_instance_queries
 import utilities as U
 from Embeddings import instance as embed_instance
 import Search
@@ -108,7 +109,7 @@ def get_tdps_id(id):
 @app.get("/query")
 def get_query():
     query = request.args.get('q')
-    print("[app] Query:", query)
+    print(f"/query: '{query}'")
     if query is None: query = ''
     return render_template('query.html', initial_query=query)
 
@@ -145,6 +146,9 @@ def search(query):
     time_passed = lambda: int(1000*(time.time() - time_search_start))
     time_passed_str = lambda: ("      " + str(time_passed()))[-4:] + " ms"
     log = lambda *args, **kwargs: print(f"[app.search][{time_passed_str()}]", *args, **kwargs)
+
+    db_instance_queries.post_query(query)
+    log("Query added to database")
 
     log("Sentence search")
     time_now = time.time()
