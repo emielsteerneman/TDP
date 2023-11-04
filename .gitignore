@@ -1,6 +1,6 @@
 __pycache__
 TDPs
-database.db
+*.db
 logfile.txt
 images
 thumbnails
