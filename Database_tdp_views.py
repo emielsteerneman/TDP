@@ -16,15 +16,16 @@ class Database:
 			CREATE TABLE IF NOT EXISTS views (
                id INTEGER PRIMARY KEY AUTOINCREMENT,
                tdp VARCHAR(255) NOT NULL,
-               date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+               date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			   ref VARCHAR(255) DEFAULT NULL
 			)
         ''')
   
 		self.conn.commit()
 		print("[DB] Database TDP Views initialized")
   
-	def post_tdp(self, tdp_db:TDP_db):
-		entry_string = f"{tdp_db.team} | {tdp_db.year} | {'ETDP' if tdp_db.is_etdp else 'TDP'}"
+	def post_tdp(self, tdp_db:TDP_db, ref:str=None):
+		entry_string = f"{tdp_db.team} | {tdp_db.year} | {'ETDP' if tdp_db.is_etdp else 'TDP'} | {ref}"
   
 		self.conn.execute('''INSERT INTO views (tdp) VALUES (?)''', (entry_string, ))
 		self.conn.commit()
@@ -32,4 +33,4 @@ class Database:
 
 		return entry_string
 
-instance = Database()		
+instance = Database()

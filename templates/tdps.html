@@ -103,7 +103,7 @@
                             </div>
                             <br>
                             {% for tdp in team[1] %}
-                            <div style="display: inline-block; padding: 2px;"><a href="/tdps/{{ tdp['id'] }}">{{ tdp['year'] }}</a></div>
+                            <div style="display: inline-block; padding: 2px;"><a href="/tdps/{{ tdp['id'] }}?ref=team">{{ tdp['year'] }}</a></div>
                             {% endfor %}
                         </div>
                         {% endfor %}
@@ -120,7 +120,7 @@
                             {% for tdp in year[1] %}
                             <div style="display: inline-block; padding: 10px;">
                                 <img src="/static/logos/{{ tdp['team'] }}.png" width=30px>
-                                <a href="/tdps/{{ tdp['id'] }}">{{ tdp['team'] }}</a>
+                                <a href="/tdps/{{ tdp['id'] }}?ref=year">{{ tdp['team'] }}</a>
                             </div>
                             {% endfor %}
                             <br><br><br>

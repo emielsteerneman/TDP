@@ -14,7 +14,6 @@ from Embeddings import instance as embed_instance
 import Search
 from telegram import Bot
 
-#app = Flask(__name__, template_folder='templates', static_folder='static')
 app = Flask(__name__, template_folder='templates', static_url_path='/static', static_folder='static')
 
 embed_instance.set_sentences(db_instance.get_sentences())
@@ -92,9 +91,10 @@ def homepage():
 @app.get("/tdps/<id>")
 def get_tdps_id(id):
     try:
+        ref = request.args.get('ref')
         tdp_db = db_instance.get_tdp_by_id(id)
         filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
-        entry_string = db_instance_tdp_views.post_tdp(tdp_db)
+        entry_string = db_instance_tdp_views.post_tdp(tdp_db, ref)
 
         thread = threading.Thread(target=send_to_telegram, args=[entry_string])
         thread.start()
@@ -224,31 +224,29 @@ def search(query):
     images = { image.id : image.to_json_dict() for image in images }
     duration_to_dict = time.time() - time_now
 
+    shorten_text = lambda text: text[:100] + "..." if len(text) > 100 else text
 
     # Send results to telegram
     telegram_time = time.time()
     message = f"Query: \"{query}\"\n\n"
-    message += "Top results:\n\n"
-    for i in range(1):
-        print(ordering[i])
+    message += "Top results:\n"
+    for i in range(3):
+        print("tdp:", ordering[i])
         tid, pids = ordering[i]
-        message += f"__{tdps[tid]['team']} {tdps[tid]['year']}__\n"
-        for pid, sids in pids:
-            message += f"**{paragraphs[pid]['title']}**\n"
-            for sid in sids:
-                message += f"{sentences[sid]['text_raw']}. "
-            message += "\n"
+        message += f"\n:: {tdps[tid]['team']} {tdps[tid]['year']}\n"
+        pid, sids  = pids[0]
+        message += f":::: {paragraphs[pid]['title']}\n"
+        for sid in sids[:3]:
+            message += f"{sentences[sid]['text_raw']}. "
+        message += "\n"
 
         if len(sentences) <= i: break
 
-    message += "\n\n"    
+    message += "\n\n"
     message += f"sentences: {duration_sentence_search:.2f}s | "
     message += f"images: {duration_image_search:.2f}s | "
     message += f"paragraphs: {duration_paragraph_search:.2f}s | "
-    message += f"image stuff: {duration_image_stuff:.2f}s | "
-    message += f"tdp stuff: {duration_tdp_stuff:.2f}s | "
-    message += f"ordering: {duration_ordering:.2f}s | "
-    message += f"to_dict: {duration_to_dict:.2f}s\n"
+    message += f"image stuff: {duration_image_stuff:.2f}s\n"
 
     thread = threading.Thread(target=send_to_telegram, args=[message])
     thread.start()
