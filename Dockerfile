@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-RUN apt update && apt upgrade && apt install -y python3.11 python3-pip unzip git
+RUN apt update -y && apt upgrade -y && apt install -y python3.11 python3-pip unzip git
 
 RUN pip install --upgrade pip
 
@@ -18,6 +18,9 @@ RUN git clone https://github.com/emielsteerneman/TDP.git /app
 WORKDIR /app
 
 COPY TDPs/ TDPs/
+COPY images/ images/
+COPY static/tdps static/tdps
+COPY thumbnails/ thumbnails/
 COPY database.db database.db
 
 #RUN python3 download_tdps.py
