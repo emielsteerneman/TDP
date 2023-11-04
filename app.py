@@ -14,7 +14,8 @@ from Embeddings import instance as embed_instance
 import Search
 from telegram import Bot
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+#app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__, template_folder='templates', static_url_path='/static', static_folder='static')
 
 embed_instance.set_sentences(db_instance.get_sentences())
 
@@ -89,18 +90,26 @@ def hello():
 
 @app.get("/tdps/<id>")
 def get_tdps_id(id):
-    tdp_db = db_instance.get_tdp_by_id(id)
-    filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
-    entry_string = db_instance_tdp_views.post_tdp(tdp_db)
+    try:
+        tdp_db = db_instance.get_tdp_by_id(id)
+        filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
+        entry_string = db_instance_tdp_views.post_tdp(tdp_db)
 
-    thread = threading.Thread(target=send_to_telegram, args=[entry_string])
-    thread.start()
+        thread = threading.Thread(target=send_to_telegram, args=[entry_string])
+        thread.start()
 
-    return render_template('tdp.html', tdp=tdp_db, filepath=filepath)
+        return render_template('tdp.html', tdp=tdp_db, filepath=filepath)
+    except Exception as e:
+        print(e)
+        # Return generic 404 page
+        return render_template('404.html'), 404
 
 @app.get("/query")
 def get_query():
-    return send_from_directory('templates', 'query.html')
+    query = request.args.get('q')
+    print("[app] Query:", query)
+    if query is None: query = ''
+    return render_template('query.html', initial_query=query)
 
 @app.get("/api/tdps")
 def get_api_tdps():
@@ -118,27 +127,43 @@ def get_api_tdps_id_paragraphs(tdp_id):
 
 """ /api/query """
 
+@app.get("/api/query")
+def get_api_query():
+    query = request.args.get('q')
+    return search(query)
+
 @app.post("/api/query")
 def post_api_query():
     body = request.get_json()
     query = body['query']
+    return search(query)
 
-    print("Sentence search")
+def search(query):
+
+    time_search_start = time.time()
+    time_passed = lambda: int(1000*(time.time() - time_search_start))
+    time_passed_str = lambda: ("      " + str(time_passed()))[-4:] + " ms"
+    log = lambda *args, **kwargs: print(f"[app.search][{time_passed_str()}]", *args, **kwargs)
+
+    log("Sentence search")
     time_now = time.time()
     sentences, sentence_scores = search_instance_sentences.search(query, R=0.5, n=100)
     duration_sentence_search = time.time() - time_now
     sentence_ids = [ sentence.id for sentence in sentences ]
-    
-    print("Image search")
+    log("Sentence search complete")
+
+    log("Image search")
     time_now = time.time()
     images, image_scores = search_instance_images.search(query, R=0.5, n=15)
     duration_image_search = time.time() - time_now
     image_ids_image_search = [ image.id for image in images ]
+    log("Image search complete")
 
-    print("Paragraph search")
+    log("Paragraph search")
     time_now = time.time()
     paragraphs, paragraph_scores = search_instance_paragraphs.search(query, R=0.5, n=15)
     duration_paragraph_search = time.time() - time_now
+    log("Paragraph search complete")
 
 
 
@@ -226,7 +251,7 @@ def post_api_query():
 
     thread = threading.Thread(target=send_to_telegram, args=[message])
     thread.start()
-    print(f"[app] Sent message to telegram in {time.time() - telegram_time:.2f}s")
+    log(f"Sent message to telegram in {time.time() - telegram_time:.2f}s")
 
     return {
         "tdps": tdps,
