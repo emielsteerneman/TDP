@@ -1,6 +1,9 @@
-import os
 import functools
 from typing import List, Tuple, Dict
+import os
+import shutil
+import subprocess
+import sys
 
 import Database
 from Database import instance as db_instance
@@ -59,7 +62,6 @@ def resentence_paragraphs():
     # Report total number of sentences
     sentences = db_instance.get_sentences()
     print(f"[resentence_paragraphs] {len(sentences)} sentences found")
-
 
 def pdfs_to_html():
     """Convert all TDP pdf files to html files"""
@@ -162,11 +164,6 @@ def resolve_semvers_rec(semvers:Tuple[Semver], depth=0):
     longest_chain = max(chains, key=len, default=[])
     return longest_chain
 
-
-
-
-
-
 def first_test():
     print("Importing packages...")
     from sentence_transformers import SentenceTransformer
@@ -227,10 +224,4 @@ def first_test():
             print(f"{p['tdp_id']}".rjust(5), p['title'].rjust(40), f"{distance:.3f}", sentence[:150])
 
 if __name__ == "__main__":
-    
-    # first_test()
-    # db = db.DB()
-    # find_all_tdps_and_add_to_database(db)
-
-    resentence_paragraphs()
-        
+    globals()[sys.argv[1]]()

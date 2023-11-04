@@ -323,7 +323,7 @@ class Database:
 		tdp = self.conn.execute('''SELECT * FROM tdps WHERE rowid = ?''', (rowid,)).fetchone()
 		return TDP_db.from_dict(tdp)
 
-	def get_tdp_by_id(self, tdp_id:int):
+	def get_tdp_by_id(self, tdp_id:int) -> TDP_db:
 		tdp = self.conn.execute('''SELECT * FROM tdps WHERE id = ?''', (tdp_id,)).fetchone()
 		return TDP_db.from_dict(tdp)
   
