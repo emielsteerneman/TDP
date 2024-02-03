@@ -482,9 +482,7 @@ if __name__ == "__main__":
     # TDP that uses TT** font
     # tdps = ["./TDPs/2014/2014_ETDP_KIKS.pdf"]
 
-    tdps = [tdp for tdp in tdps if "roboteam" in tdp.lower()]
-    print(tdps)
-    exit()
+    # tdps = [tdp for tdp in tdps if "roboteam" in tdp.lower()]
 
     """ Load all TDPs to be parsed """
     # Blacklist because these papers don't contain loadable text. The text seems to be images or something weird..

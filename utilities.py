@@ -19,6 +19,16 @@ def find_all_tdps():
                 tdps.append(os.path.join(root, file))
     return tdps
 
+def find_subset_tdps():
+    tdps = find_all_tdps()
+    years = [ "2019", "2022", "2023" ]
+    teams = [ "tigers", "er-force", "roboteam" ]
+
+    tdps = [ tdp for tdp in tdps if any([ year in tdp for year in years ]) ]
+    tdps = [ tdp for tdp in tdps if any([ team in tdp.lower() for team in teams ]) ]
+
+    return tdps
+
 # TDP file name format: <year>_<is_etdp>_<team>.pdf
 def parse_tdp_name(filepath):
     """Parse TDP file name and return a dictionary with the fields"""
