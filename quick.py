@@ -24,7 +24,11 @@ TDP
 [images]{
 	
 }
-
+information {
+	team name
+	year
+	league
+}
 
 debug {
 	pagenumbers top

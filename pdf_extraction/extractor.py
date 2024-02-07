@@ -9,7 +9,11 @@ import utilities as U
 from .Span import Span
 from .Image import Image
 
+from data_structures.TDP import TDP
+from data_structures.Paragraph import Paragraph
+from data_structures.Sentence import Sentence
 
+from text_processing import text_processing as TP
 
 # PyMuPDF documentation: https://buildmedia.readthedocs.org/media/pdf/pymupdf/latest/pymupdf.pdf
 
@@ -42,7 +46,9 @@ Things to know about paragraph_headers:
     3. They more often than not fit on one line
 """
 
-def process_pdf(pdf: str | fitz.Document) -> dict:
+
+
+def process_pdf(pdf: str | fitz.Document) -> TDP:
     if isinstance(pdf, str):
         pdf: fitz.Document = fitz.open(pdf)
 
@@ -60,7 +66,7 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
         return
     
     # Create mask that references all spans that are not normal text spans (figure descriptions, page numbers, paragraph titles, etc)
-    sentences_id_mask:list[int] = []
+    spans_id_mask:list[int] = []
 
     
     ### Match images with spans that make up their description
@@ -70,7 +76,7 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
         image_spans, figure_number = match_image_with_spans(image, spans)
         image['figure_number'] = figure_number
         image['description'] = " ".join([ _['text'] for _ in image_spans ])
-        sentences_id_mask += [ _['id'] for _ in image_spans ]
+        spans_id_mask += [ _['id'] for _ in image_spans ]
 
 
     ### Find all sentences that are pagenumbers
@@ -78,7 +84,7 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
     logger.info("======== find_pagenumbers ========")
     pagenumber_spans = find_pagenumbers(spans)
     # Extend sentences_id_mask with found pagenumbers
-    sentences_id_mask += [ _['id'] for _ in pagenumber_spans ]       
+    spans_id_mask += [ _['id'] for _ in pagenumber_spans ]       
 
 
     ### Find all sentences that can make up a paragraph title
@@ -87,30 +93,34 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
 
     # Extend sentences_id_mask with found paragraph titles, and abstract id and references id
     for sentence_group in paragraph_titles:
-        sentences_id_mask += [ _['id'] for _ in sentence_group ]
+        spans_id_mask += [ _['id'] for _ in sentence_group ]
     # Add to mask all sentences before and after abstract and references. Anything before abstract is probably the title of the paper and
     # anything after references is probably the bibliography
-    sentences_id_mask += list(range(0, abstract_id+1))
-    sentences_id_mask += list(range(references_id, spans[-1]['id'] + 1))
+    spans_id_mask += list(range(0, abstract_id+1))
+    spans_id_mask += list(range(references_id, spans[-1]['id'] + 1))
 
-    return
+
+
+
+    tdp = TDP()
+
 
     ### Split up remaining sentences into paragraphs
     # Get ids of sentences that are paragraph titles
     paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_titles ])
     # Create empty bin for each paragraph
-    paragraph_bins:list[list[Sentence]] = [ [] for _ in range(len(paragraph_titles)) ]
+    paragraph_bins:list[list[Span]] = [ [] for _ in range(len(paragraph_titles)) ]
     # Move each unmasked sentence into the correct bin
-    for sentence in sentences:
+    for span in spans:
         # Skip any masked sentence (paragraph titles / pagenumbers / figure descriptions / etc)
-        if sentence['id'] in sentences_id_mask: continue
+        if span['id'] in spans_id_mask: continue
         # Find index of bin that this sentence belongs to
-        bin_mask = list(sentence['id'] < paragraph_title_ids) + [True]
+        bin_mask = list(span['id'] < paragraph_title_ids) + [True]
         bin_idx = list(bin_mask).index(True)-1
         # Skip sentences that appear before the first paragraphs, such as the paper title or abstract
         if bin_idx < 0: continue
         # Place sentence into correct bin
-        paragraph_bins[bin_idx].append(sentence)
+        paragraph_bins[bin_idx].append(span)
 
     paragraphs = []
     for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_titles):
@@ -124,8 +134,8 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
         text_raw = text_raw.replace("\n", " ")
         
         # references = re.findall(r"\[[0-9]+\]", text_raw) TODO
-        sentences_raw = split_text_into_sentences(text_raw)
-        sentences_processed = [ process_text_for_keyword_search(_) for _ in sentences_raw ]
+        sentences_raw = TP.split_text_into_sentences(text_raw)
+        sentences_processed = [ TP.process_text_for_keyword_search(_) for _ in sentences_raw ]
         
         text_processed = " ".join(sentences_processed)
                     
@@ -165,9 +175,7 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
     
     # First, store TDP
     # print(tdp)
-    tdp_instance = U.parse_tdp_name(tdp)
-    tdp_instance = db_instance.post_tdp(tdp_instance)
-    total_tdps_added += 1
+    tdp = U.parse_tdp_name(tdp)
 
     # Then store each paragraph and its sentences and its images
     for i_paragraph, paragraph in enumerate(paragraphs):
@@ -175,6 +183,11 @@ def process_pdf(pdf: str | fitz.Document) -> dict:
         embedding = embed_instance.embed(paragraph['text_processed'])
         paragraph_db = Database.Paragraph_db( tdp_id=tdp_instance.id, title=paragraph['title'], text_raw=paragraph['text_raw'], text_processed=paragraph['text_processed'], embedding=embedding )
         
+        paragraph = Paragraph(
+            tdp_id=tdp.id,
+            title=paragraph['title'],
+        )
+
         paragraph_db = db_instance.post_paragraph(paragraph_db)
         total_paragraphs_added += 1
         

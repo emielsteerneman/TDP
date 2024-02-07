@@ -7,7 +7,9 @@ import sys
 
 import Database
 from Database import instance as db_instance
-from Semver import Semver
+from pdf_extraction.Semver import Semver
+
+from data_structures import TDP as TDP
 
 
 def find_all_tdps():
@@ -34,7 +36,7 @@ def parse_tdp_name(filepath):
     """Parse TDP file name and return a dictionary with the fields"""
     filename = os.path.basename(filepath)
     fields = filename.split('.')[0].split('_')
-    return Database.TDP_db (
+    return TDP (
         filename = filename,
         year = fields[0],
         is_etdp = fields[1].lower() == 'etdp',
