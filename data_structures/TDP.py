@@ -1,28 +1,53 @@
 from .Paragraph import Paragraph
-from .Sentence import Sentence
 
 class TDP:
-    def __init__self(self, id:int=None, filename:str=None, team:str=None, year:int=None, league:str=None, is_etdp:int=None):
-        # Information
+    def __init__(self, id:int=None, filename:str=None, team:str=None, year:int=None, league:str=None, is_etdp:int=None):
         self.id:int = id
         self.filename: str = filename
         self.team: str = team
         self.year: int = year
         self.league: str = league
-        # Debug information
-        self.debug_information = {}
-        # Paragraphs
         self.paragraphs: list[Paragraph] = []
-        # Sentences
-        self.sentences: list[Sentence] = []
-        # Images
-        self.images = []
 
-    def add_sentence(self, sentence:Sentence):
-        self.sentences.append(sentence)
-        # Ensure that sentence belongs to an existing paragraph
-        if sentence.paragraph_id not in [ _.id for _ in self.paragraphs ]:
-            raise ValueError(f"Sentence with id {sentence.id} does not belong to an existing paragraph")
-        
+        if self.year is not None:
+            self.year = int(self.year)
+
     def add_paragraph(self, paragraph:Paragraph):
         self.paragraphs.append(paragraph)
+
+    def __repr__(self) -> str:
+        n_sentences = sum([len(paragraph.sentences) for paragraph in self.paragraphs])
+        return f"TDP(team={self.team}, year={self.year}, league={self.league}, n_paragraphs={len(self.paragraphs)}, n_sentences={n_sentences})"
+    
+    def print_outlines(self):
+        print("TDP Outline")
+        print(f"  Team: {self.team}")
+        print(f"  Year: {self.year}")
+        print(f"  League: {self.league}")
+        print(f"  Paragraphs: {len(self.paragraphs)}")
+        
+        for paragraph in self.paragraphs:
+            n_chars = len(paragraph.content_raw())
+            print(f"    {paragraph.text_raw.ljust(30)}", end="")
+            print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
+
+    def print_full(self):
+        print("TDP Full")
+        print(f"  Team: {self.team}")
+        print(f"  Year: {self.year}")
+        print(f"  League: {self.league}")
+        print(f"  Paragraphs: {len(self.paragraphs)}")
+        
+        for paragraph in self.paragraphs:
+            content_raw = paragraph.content_raw()
+            content_processed = paragraph.content_processed()
+            n_chars = len(content_raw)
+            print(f"    {paragraph.text_raw.ljust(30)}", end="")
+            print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
+            print(f"      {content_raw}")
+            # print("\n\n")
+            # print(f"      {content_processed}")
+            print("\n\n")
+
+            
+        print("  End of TDP")
