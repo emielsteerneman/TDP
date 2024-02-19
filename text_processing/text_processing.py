@@ -49,3 +49,18 @@ def process_text_for_keyword_search(text:str) -> str:
     
     sentence = " ".join(words)
     return sentence
+
+def process_raw_spans(spans:list[str]) -> list[list[str], list[str]]:
+        text_raw = "\n".join(spans)
+        
+        # Replace multiple whitespace with single whitespace
+        text_raw = re.sub(r"\s+", " ", text_raw)
+        # Get rid of newlines and reconstruct hyphenated words
+        text_raw = text_raw.replace("-\n", "")
+        text_raw = text_raw.replace("\n", " ")
+        
+        # references = re.findall(r"\[[0-9]+\]", text_raw) TODO
+        sentences_raw = split_text_into_sentences(text_raw)
+        sentences_processed = [ process_text_for_keyword_search(_) for _ in sentences_raw ]
+        
+        return sentences_raw, sentences_processed
