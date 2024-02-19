@@ -83,7 +83,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
     # For example, "Description of the Warthog Robotics SSL 2015 Project    5" or "6    Warthog Robotics"
     logger.info("======== find_pagenumbers ========")
     pagenumber_spans = find_pagenumbers(spans)
-    # Extend sentences_id_mask with found pagenumbers
+    # Extend spans_id_mask with found pagenumbers
     spans_id_mask += [ _['id'] for _ in pagenumber_spans ]       
 
 
@@ -91,23 +91,25 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
     logger.info("======== find_paragraph_headers ========")
     paragraph_titles, abstract_id, references_id = find_paragraph_headers(spans)
 
-    # Extend sentences_id_mask with found paragraph titles, and abstract id and references id
-    for sentence_group in paragraph_titles:
-        spans_id_mask += [ _['id'] for _ in sentence_group ]
-    # Add to mask all sentences before and after abstract and references. Anything before abstract is probably the title of the paper and
+    # Extend spans_id_mask with found paragraph titles, and abstract id and references id
+    for span_group in paragraph_titles:
+        spans_id_mask += [ _['id'] for _ in span_group ]
+    # Add to mask all spans before and after abstract and references. Anything before abstract is probably the title of the paper and
     # anything after references is probably the bibliography
     spans_id_mask += list(range(0, abstract_id+1))
     spans_id_mask += list(range(references_id, spans[-1]['id'] + 1))
 
-
-
-
     tdp = TDP()
+    try:
+        tdp = U.parse_tdp_name(pdf.name)
+    except Exception as e:
+        logger.warning(f"Could not parse TDP name from {pdf.name}. Error: {str(e)}")
 
 
-    ### Split up remaining sentences into paragraphs
-    # Get ids of sentences that are paragraph titles
+    ### Split up remaining spans into paragraphs
+    # Get ids of spans that are paragraph titles
     paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_titles ])
+
     # Create empty bin for each paragraph
     paragraph_bins:list[list[Span]] = [ [] for _ in range(len(paragraph_titles)) ]
     # Move each unmasked sentence into the correct bin
@@ -122,98 +124,40 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
         # Place sentence into correct bin
         paragraph_bins[bin_idx].append(span)
 
-    paragraphs = []
     for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_titles):
-        title = " ".join([ _['text'] for _ in paragraph_title ])
-        text_raw = "\n".join([ _['text'] for _ in paragraph_bin ])
+        title_raw, title_processed = TP.process_raw_spans([ _['text'] for _ in paragraph_title ])
+        title_raw, title_processed = " ".join(title_raw), " ".join(title_processed)
         
-        # Replace multiple whitespace with single whitespace
-        text_raw = re.sub(r"\s+", " ", text_raw)
-        # Get rid of newlines and reconstruct hyphenated words
-        text_raw = text_raw.replace("-\n", "")
-        text_raw = text_raw.replace("\n", " ")
-        
-        # references = re.findall(r"\[[0-9]+\]", text_raw) TODO
-        sentences_raw = TP.split_text_into_sentences(text_raw)
-        sentences_processed = [ TP.process_text_for_keyword_search(_) for _ in sentences_raw ]
-        
-        text_processed = " ".join(sentences_processed)
-                    
-        paragraphs.append({
-            'title': title,
-            'text_raw': text_raw,
-            'text_processed': text_processed,
-            'sentences_raw': sentences_raw,
-            'sentences_processed': sentences_processed,
-        })
-    
-    ### Find image references
-    for i_paragraph, paragraph in enumerate(paragraphs):
-        paragraph['images'] = []
-        text = paragraph['text_raw']
-        # Search for "Figure 1" or "Fig. 1" or "Fig 1"
-        # TODO also search for "Figure 1a" or "Figure 1.12" ?
-        
-        image_references = re.findall(r"(?:figure|fig\.?) (\d+)", text.lower())
-        image_references = list(set([ int(_) for _ in image_references ]))
-        
-        # if len(image_references):
-        #     print()
-        #     print(paragraph['title'])
-        #     print(re.findall(r"(figure|fig\.?) (\d+)", text.lower()))
-        
-        for ref in image_references:
-            for i_image, image in enumerate(images):
-                if image['figure_number'] == ref:
-                    paragraph['images'].append(image)
-        
-
-    # for p in paragraphs:
-    #     print(f"{p['title'].rjust(50)}: {len(p['images'])}")
-    
-    """ Store everything in the database """
-    
-    # First, store TDP
-    # print(tdp)
-    tdp = U.parse_tdp_name(tdp)
-
-    # Then store each paragraph and its sentences and its images
-    for i_paragraph, paragraph in enumerate(paragraphs):
-        print(f"* {tdp.ljust(50)} | TDP {i_tdp+1}/{len(tdps)} - paragraph {i_paragraph+1}/{len(paragraphs)}", end="    \r")
-        embedding = embed_instance.embed(paragraph['text_processed'])
-        paragraph_db = Database.Paragraph_db( tdp_id=tdp_instance.id, title=paragraph['title'], text_raw=paragraph['text_raw'], text_processed=paragraph['text_processed'], embedding=embedding )
+        sentences_raw, sentences_processed = TP.process_raw_spans([ _['text'] for _ in paragraph_bin ])
         
         paragraph = Paragraph(
-            tdp_id=tdp.id,
-            title=paragraph['title'],
+            text_raw=title_raw,
+            text_processed=title_processed,
         )
 
-        paragraph_db = db_instance.post_paragraph(paragraph_db)
-        total_paragraphs_added += 1
-        
-        # Store all sentences
-        sentences_db = []
-        for text_raw, text_processed in zip(paragraph['sentences_raw'], paragraph['sentences_processed']):
-            embedding = embed_instance.embed(text_processed)
-            sentence_db = Database.Sentence_db( paragraph_id=paragraph_db.id, text_raw=text_raw, text_processed=text_processed, embedding=embedding )
-            sentences_db.append(sentence_db)
-        # TODO why don't I have a function to store just one sentence?
-        ids = [ _.paragraph_id for _ in sentences_db ]
-        db_instance.post_sentences(sentences_db)
-        total_sentences_added += len(sentences_db)
-        
-        # Store all images and mappings
-        for image in paragraph['images']:
-            text_raw = image['description']
-            text_processed = process_text_for_keyword_search(text_raw)
-            embedding = embed_instance.embed(text_processed)
-            image_db = Database.Image_db(filename=image['filepath'], text_raw=text_raw, text_processed=text_processed, embedding=embedding)
-            image_db = db_instance.post_image(image_db)
-            total_images_added += 1
+        tdp.add_paragraph(paragraph)
 
-            # Store paragraph to image mapping
-            mapping_db = Database.Paragraph_Image_Mapping_db(paragraph_id=paragraph_db.id, image_id=image_db.id)
-            mapping_db = db_instance.post_paragraph_image_mapping(mapping_db)
+        for sentence_raw, sentence_processed in zip(sentences_raw, sentences_processed):
+            sentence = Sentence(
+                text_raw=sentence_raw,
+                text_processed=sentence_processed
+            )
+            paragraph.add_sentence(sentence)
+    
+    """"""""""""""" TDP IS NOW FILLED WITH PARAGRAPHS AND SENTENCES """""""""""""""
+    
+    ### Find image references
+    for paragraph in tdp.paragraphs:
+        # Search for "Figure 1" or "Fig. 1" or "Fig 1"
+        # TODO also search for "Figure 1a" or "Figure 1.12" ?
+
+        image_references = re.findall(r"(?:figure|fig\.?) (\d+)", paragraph.content_raw().lower())
+        image_references = list(set([ int(_) for _ in image_references ]))
+        
+        referenced_images = [ image for image in images if image['figure_number'] in image_references ]
+        paragraph.add_images(referenced_images)
+
+    return tdp    
                 
 
 def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[Image]]:
