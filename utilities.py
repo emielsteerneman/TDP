@@ -5,12 +5,11 @@ import shutil
 import subprocess
 import sys
 
-import Database
 from Database import instance as db_instance
 from extraction.Semver import Semver
 
 from data_structures.TDP import TDP
-
+from MyLogger import logger
 
 def find_all_tdps():
     """Find all TDP pdf files in all subdirectories of current directory"""
@@ -34,7 +33,7 @@ def find_subset_tdps():
 # TDP file name format: <year>_<is_etdp>_<team>.pdf
 def parse_tdp_name(filepath):
     """Parse TDP file name and return a dictionary with the fields"""
-    print("[parse_tdp_name] Parsing", filepath)
+    logger.info(f"Parsing {filepath}")
     filename = os.path.basename(filepath)
     fields = filename.split('.')[0].split('_')
     return TDP (
