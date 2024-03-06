@@ -489,6 +489,7 @@ def find_pagenumbers(spans: list[Span]):
     pagenumber_spans = [_ for group in pagenumber_groups for _ in group]
     return pagenumber_spans
 
+
 def groupby_y_fontsize_page(spans: list[Span]) -> list[list[Span]]:
     groups = []
     for span in spans:
@@ -505,9 +506,6 @@ def groupby_y_fontsize_page(spans: list[Span]) -> list[list[Span]]:
             groups.append([span])
 
     return groups
-
-
-""" // Regression tests """
 
 
 def is_bold(flags):

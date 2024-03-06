@@ -48,10 +48,10 @@ class Sentence:
 			embedding=sentence["embedding"]
 		)
 
-	def __str__(self) -> str:
-		text_raw_short = self.text_raw[:10] + " ... " + self.text_raw[-10:] if len(self.text_raw) > 25 else self.text_raw
-		text_processed_short = self.text_processed[:10] + " ... " + self.text_processed[-10:] if len(self.text_processed) > 25 else self.text_processed
-		return f"Sentence_db(id={self.id}, tdp_id={self.tdp_id}, paragraph_id={self.paragraph_id}, text='{text_raw_short}', text_raw='{text_processed_short}')"	
+	# def __str__(self) -> str:
+	# 	text_raw_short = self.text_raw[:10] + " ... " + self.text_raw[-10:] if len(self.text_raw) > 25 else self.text_raw
+	# 	text_processed_short = self.text_processed[:10] + " ... " + self.text_processed[-10:] if len(self.text_processed) > 25 else self.text_processed
+	# 	return f"Sentence_db(id={self.id}, tdp_id={self.tdp_id}, paragraph_id={self.paragraph_id}, text='{text_raw_short}', text_raw='{text_processed_short}')"	
   	
-	def __dict__(self):
-		return self.to_dict()
+	# def __dict__(self):
+	# 	return self.to_dict()

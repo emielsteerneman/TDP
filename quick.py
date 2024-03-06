@@ -1,14 +1,16 @@
-import fitz
-from importlib import reload
-from extraction import extractor as E
-from openai import OpenAI
+# System libraries
 import json
+import os
+from importlib import reload
 
+# Local libraries
+from embedding.Embeddings import instance as embed_instance
+from extraction import extractor as E
+
+os.path.expanduser('.env')
 
 def parse_response(response):
 	print("\n")
-
-	# print(response)
 
 	if response.startswith('```'):
 		response = response[7:-3]
@@ -34,14 +36,22 @@ def parse_response(response):
 	print()
 	print(response)
 
+tdp = E.process_pdf("2023_ETDP_RoboTeam_Twente.pdf")
 
-d = fitz.open("2023_ETDP_RoboTeam_Twente.pdf")
+sentences = [ s.text_raw for s in tdp.get_sentences()[:5] ]
 
-tdp = E.process_pdf(d)
+embedding = embed_instance.embed_using_sentence_transformer(sentences)
+print(embedding[:, :3])
+print()
+embedding = embed_instance.embed_using_openai(sentences)
+print(embedding[:, :3])
 
-client = OpenAI(
-	api_key = "",
-)
+
+# for k, v in os.environ.items():
+# 	print(k.rjust(40), v)
+
+
+"""
 
 tags = ["#pathplanning", "#electronics", "#mechanics", "#software", "#ai", "#motor", "#pathplanning", "#solenoid", "#ballsensor", "#kicker", "#chipper"]
 Query1 = f"Using the json key 'tags', given the tags [{' '.join(tags)}], reply with a list containing only the tags that are relevant to the text above. "
@@ -87,44 +97,5 @@ for p in tdp.paragraphs:
 	response = completion.choices[0].message.content
 	parse_response(response)
 
-
-"""
-
-TDP
-
-[sentence]{
-	raw text
-	factory id
-	page number
-	paragraph id
-}
-
-[paragraph]{
-	raw text (which is the title)
-	factory id
-	page number
-	semver
-}
-[images]{
-	
-}
-information {
-	team name
-	year
-	league
-}
-
-debug {
-	pagenumbers top
-	pagenumbers bottom
-	excluded ids?
-	image descriptions
-
-}
-
-
-Do I need to know what (sub)paragraph a sentence belongs to?
-- Suggesting entire paragraphs might be easier for RAG
-- 
 
 """

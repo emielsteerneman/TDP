@@ -1,4 +1,4 @@
-# Database
+## Databases
 
 Milvus, Pinecone, Weaviate, FAISS, QDrant, Pathway LLM, Annoy
 
@@ -19,3 +19,16 @@ Open Source databases:
 RAG vs Semantic Search https://www.webuters.com/rag-vs-semantic-search-the-ai-techniques-redefining-data-retrieval
 
 how-to pinecone https://app.pinecone.io/organizations/-NXe58s7Bg1lsQAZrVhr/projects/serverless:g5e26fm/indexes
+
+## Sparse vectors
+Either go with simple word indices like BM25 or mode advanced NNs like used in SPLADE
+- Want to support literal keyword search, can't be done with SPLADE. 
+https://medium.com/@infiniflowai/sparse-embedding-or-bm25-84c942b3eda7
+
+## Issues to solve
+### How to reduce costs !?!?
+
+All stuff needs to be running only on-demand, like Azure Functions. So, no 24/7 VMs or Docker containers.
+* Issue: Loading a neural network takes time, can't really be done on demand. So, how to generate sparse vectors?
+    * Dense vectors can be generated using the OpenAI API. Should be very cheap
+

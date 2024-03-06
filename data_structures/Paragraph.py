@@ -67,8 +67,8 @@ class Paragraph:
 			embedding=paragraph["embedding"]
 		)
   
-	def __str__(self) -> str:
-		return f"Paragraph(id={self.id}, tdp_id={self.tdp_id}, title={self.text_raw})"
+	# def __str__(self) -> str:
+	# 	return f"Paragraph(id={self.id}, tdp_id={self.tdp_id}, title={self.text_raw})"
 
-	def __dict__(self):
-		return self.to_dict()
+	# def __dict__(self):
+	# 	return self.to_dict()

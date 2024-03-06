@@ -9,7 +9,7 @@ formatter = logging.Formatter('%(asctime)s | %(levelname)8s | %(filename)s:%(fun
 
 # command line logger
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 

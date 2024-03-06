@@ -15,6 +15,12 @@ class TDP:
     def add_paragraph(self, paragraph:Paragraph):
         self.paragraphs.append(paragraph)
 
+    def get_sentences(self) -> list[str]:
+        sentences = []
+        for paragraph in self.paragraphs:
+            sentences += paragraph.sentences
+        return sentences
+
     def __repr__(self) -> str:
         n_sentences = sum([len(paragraph.sentences) for paragraph in self.paragraphs])
         return f"TDP(team={self.team}, year={self.year}, league={self.league}, n_paragraphs={len(self.paragraphs)}, n_sentences={n_sentences})"
@@ -45,9 +51,6 @@ class TDP:
             print(f"    {paragraph.text_raw.ljust(30)}", end="")
             print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
             print(f"      {content_raw}")
-            # print("\n\n")
-            # print(f"      {content_processed}")
             print("\n\n")
-
             
         print("  End of TDP")
