@@ -3,22 +3,27 @@ import numpy as np
 
 class Sentence:
 	""" Class that represents a sentence in the database """
-	def __init__(self, id:int=None, tdp_id:int=None, paragraph_id:int=None, text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None) -> None:
+	def __init__(
+     	self, id:int=None, tdp_id:int=None, paragraph_id:int=None, sequence_id:int=None,
+      	text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None
+	) -> None:
 		self.id = id
 		self.tdp_id = tdp_id
 		self.paragraph_id = paragraph_id
+		self.sequence_id = sequence_id
 		self.text_raw = text_raw
 		self.text_processed = text_processed
 		self.embedding = embedding
 
-	""" Copy all fields from other sentence to this sentence if fields in this sentence are None"""
-	def merge(self, other:Sentence) -> None:
-		if self.id is None: self.id = other.id
-		if self.tdp_id is None: self.tdp_id = other.tdp_id
-		if self.paragraph_id is None: self.paragraph_id = other.paragraph_id
-		if self.text_raw is None: self.text_raw = other.text_raw
-		if self.text_processed is None: self.text = other.text_processed
-		if self.embedding is None: self.embedding = other.embedding
+	# """ Copy all fields from other sentence to this sentence if fields in this sentence are None"""
+	# def merge(self, other:Sentence) -> None:
+	# 	if self.id is None: self.id = other.id
+	# 	if self.tdp_id is None: self.tdp_id = other.tdp_id
+	# 	if self.paragraph_id is None: self.paragraph_id = other.paragraph_id
+	# 	if self.sequence_id is None: self.sequence_id = other.sequence_id
+	# 	if self.text_raw is None: self.text_raw = other.text_raw
+	# 	if self.text_processed is None: self.text = other.text_processed
+	# 	if self.embedding is None: self.embedding = other.embedding
 
 	""" Convert sentence to dict """
 	def to_dict(self) -> dict:
@@ -26,6 +31,7 @@ class Sentence:
 			"id": self.id,
 			"tdp_id": self.tdp_id,
 			"paragraph_id": self.paragraph_id,
+   			"sequence_id": self.sequence_id,
 			"text_raw": self.text_raw,
 			"text_processed": self.text_processed,
 			"embedding": self.embedding
@@ -43,6 +49,7 @@ class Sentence:
 			id=sentence["id"],
 			tdp_id=sentence["tdp_id"],
 			paragraph_id=sentence["paragraph_id"],
+			sequence_id=sentence["sequence_id"],
 			text_raw=sentence["text_raw"],
 			text_processed=sentence["text_processed"],
 			embedding=sentence["embedding"]

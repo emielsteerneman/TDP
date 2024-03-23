@@ -17,3 +17,8 @@ class ClientInterface(ABC):
     def load_sentences(self, collection: str, query: str) -> list[Sentence]:
         """Loads sentences from the collection"""
         raise NotImplementedError
+    
+    @abstractmethod
+    def reset_everything(self) -> None:
+        """Resets the client"""
+        raise NotImplementedError

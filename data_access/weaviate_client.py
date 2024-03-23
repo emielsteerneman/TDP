@@ -33,7 +33,7 @@ class WeaviateClient(ClientInterface):
                 "league": sentence.league,
                 "text": sentence.text_raw
             },
-            vector=vector.tolist()
+            vector = sentence.embedding.tolist()
         )
 
     def search_sentences_by_embedding(self, vector:np.array, team: str=None, year: int=None, league: str=None, limit:int=0) -> list[Sentence]:

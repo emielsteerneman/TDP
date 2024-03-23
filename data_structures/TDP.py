@@ -1,4 +1,5 @@
 from .Paragraph import Paragraph
+from .SentenceDenormalized import SentenceDenormalized
 
 class TDP:
     def __init__(self, id:int=None, filename:str=None, team:str=None, year:int=None, league:str=None, is_etdp:int=None):
@@ -11,6 +12,21 @@ class TDP:
 
         if self.year is not None:
             self.year = int(self.year)
+
+    def denormalize(self):
+        sentences_denormalized_all = []
+        for i_paragraph, paragraph in enumerate(self.paragraphs):
+            for sentence in paragraph.sentences:
+                sentence_denormalized = SentenceDenormalized(
+                    **sentence.to_dict(),
+                    tdp_id = self.id,
+                    team = self.team,
+                    year = self.year,
+                    league = self.league,                    
+                    paragraph_id = paragraph.id,
+                )
+                sentences_denormalized_all.append(sentence_denormalized)
+        return sentences_denormalized_all   
 
     def add_paragraph(self, paragraph:Paragraph):
         self.paragraphs.append(paragraph)

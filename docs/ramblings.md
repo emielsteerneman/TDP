@@ -32,3 +32,24 @@ All stuff needs to be running only on-demand, like Azure Functions. So, no 24/7 
 * Issue: Loading a neural network takes time, can't really be done on demand. So, how to generate sparse vectors?
     * Dense vectors can be generated using the OpenAI API. Should be very cheap
 
+### Can I fit everything into a single database?
+For embeddings, should support vector search (preferably dense and sparse)
+Should also support TDP structures (team, year, league, etc).
+Should support relational data (Sentence to TDP)
+
+I want to 
+- 1 | filter sentences on metadata (team / year / league).
+This means that each sentence needs that metadata, so it's all denormalized
+
+- 2 | Get all sentences that belong to a paragraph for RAG
+This means that each sentence needs a paragraph id, and that sentences should be able to be retrieved based on paragraph id. Also, sentences should somehow be sortable. So either
+  1. Store sentences like linked lists, using a value next_sentence_id
+  2. Ensure that sentences can be sorted by their id / or some sequence number
+  3. Create a column/table paragraph_id -> [ sentence_id ]
+  4. Store paragraphs with their entire text
+
+Option 2 is probably best, with a proper sequence_number
+
+Denormalized Sentence:
+  - TDP id, Paragraph id
+  - Year/Team/League, Paragraph title+sequence

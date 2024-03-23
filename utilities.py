@@ -5,16 +5,16 @@ import shutil
 import subprocess
 import sys
 
-from Database import instance as db_instance
+# from Database import instance as db_instance
 from extraction.Semver import Semver
 
 from data_structures.TDP import TDP
 from MyLogger import logger
 
-def find_all_tdps():
+def find_all_tdps(directory="."):
     """Find all TDP pdf files in all subdirectories of current directory"""
     tdps = []
-    for root, dirs, files in os.walk("."):
+    for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith(".pdf") and "TDP" in file:
                 tdps.append(os.path.join(root, file))

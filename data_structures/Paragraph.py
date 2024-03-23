@@ -5,9 +5,13 @@ from .Image import Image
 
 class Paragraph:
 	""" Class that represents a paragraph in the database """
-	def __init__(self, id:int=None, tdp_id:int=None, text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None) -> None:
+	def __init__(
+     	self, id:int=None, tdp_id:int=None, sequence_id:int=None,
+		text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None
+  	) -> None:
 		self.id = id
 		self.tdp_id = tdp_id
+		self.sequence_id = sequence_id	
 		self.text_raw = text_raw
 		self.text_processed = text_processed
 		self.embedding = embedding
@@ -16,10 +20,13 @@ class Paragraph:
 		self.images:list[Image] = []
 
 	def add_sentence(self, sentence:Sentence):
+		sentence.sequence_id = len(self.sentences)
+		sentence.paragraph_id = self.sequence_id
 		self.sentences.append(sentence)
 
 	def add_sentences(self, sentences:list[Sentence]):
-		self.sentences += sentences
+		for sentence in sentences:
+			self.add_sentence(sentence)
 
 	def add_image(self, image:Image):
 		self.images.append(image)
@@ -37,6 +44,7 @@ class Paragraph:
 	def merge(self, other:Paragraph) -> None:
 		if self.id is None: self.id = other.id
 		if self.tdp_id is None: self.tdp_id = other.tdp_id
+		if self.sequence_id is None: self.sequence_id = other.sequence_id
 		if self.text_raw is None: self.text_raw = other.text_raw
 		if self.text_processed is None: self.text_processed = other.text_processed
 		if self.embedding is None: self.embedding = other.embedding
@@ -46,6 +54,7 @@ class Paragraph:
 		return {
 			"id": self.id,
 			"tdp_id": self.tdp_id,
+			"sequence_id": self.sequence_id,
 			"text_raw": self.text_raw,
 			"text_processed": self.text_processed,
 			"embedding": self.embedding
@@ -62,6 +71,7 @@ class Paragraph:
 		return Paragraph(
 			id=paragraph["id"],
 			tdp_id=paragraph["tdp_id"],
+			sequence_id=paragraph["sequence_id"],
 			text_raw=paragraph["text_raw"],
 			text_processed=paragraph["text_processed"],
 			embedding=paragraph["embedding"]
