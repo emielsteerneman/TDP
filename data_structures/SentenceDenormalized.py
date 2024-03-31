@@ -1,22 +1,23 @@
 from __future__ import annotations
+from .League import League
 import numpy as np
 
 class SentenceDenormalized:
     def __init__(
         self, id:int=None, tdp_id:int=None, paragraph_id:int=None, sequence_id:int=None,
         text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None,
-        team:str=None, year:int=None, league:str=None
+        team:str=None, year:int=None, league:League=None
     ) -> None:
-        self.id = id
-        self.tdp_id = tdp_id
-        self.paragraph_id = paragraph_id
-        self.sequence_id = sequence_id
-        self.text_raw = text_raw
-        self.text_processed = text_processed
-        self.embedding = embedding
-        self.team = team
-        self.year = year
-        self.league = league    
+        self.id: int = id
+        self.tdp_id: int = tdp_id
+        self.paragraph_id: int = paragraph_id
+        self.sequence_id: int = sequence_id
+        self.text_raw: str = text_raw
+        self.text_processed: str = text_processed
+        self.embedding: np.ndarray = embedding
+        self.team: str = team
+        self.year: int = year
+        self.league: League = league    
 
     """ Convert sentence to dict """
     def to_dict(self) -> dict:

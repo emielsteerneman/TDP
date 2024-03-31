@@ -1,13 +1,15 @@
 from .Paragraph import Paragraph
+from .League import League
+from .TeamName import TeamName
 from .SentenceDenormalized import SentenceDenormalized
 
 class TDP:
-    def __init__(self, id:int=None, filename:str=None, team:str=None, year:int=None, league:str=None, is_etdp:int=None):
+    def __init__(self, id: int=None, filename: str=None, team: TeamName=None, year: int=None, league: League=None):
         self.id:int = id
         self.filename: str = filename
-        self.team: str = team
+        self.team: TeamName = team
         self.year: int = year
-        self.league: str = league
+        self.league: League = league
         self.paragraphs: list[Paragraph] = []
 
         if self.year is not None:
