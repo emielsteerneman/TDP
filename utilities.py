@@ -9,6 +9,9 @@ import sys
 from extraction.Semver import Semver
 
 from data_structures.TDP import TDP
+from data_structures.League import League
+from data_structures.TeamName import TeamName
+
 from MyLogger import logger
 
 def find_all_tdps(directory="."):
@@ -16,7 +19,7 @@ def find_all_tdps(directory="."):
     tdps = []
     for root, dirs, files in os.walk(directory):
         for file in files:
-            if file.endswith(".pdf") and "TDP" in file:
+            if file.endswith(".pdf"):
                 tdps.append(os.path.join(root, file))
     return tdps
 
@@ -30,17 +33,24 @@ def find_subset_tdps():
 
     return tdps
 
-# TDP file name format: <year>_<is_etdp>_<team>.pdf
-def parse_tdp_name(filepath):
+# TDP file name format
+# soccer_midsize__2017__Hibikino-Musashi__0.pdf3
+# league__year__team__index.pdf
+def parse_tdp_name(filepath) -> TDP:
     """Parse TDP file name and return a dictionary with the fields"""
     logger.info(f"Parsing {filepath}")
     filename = os.path.basename(filepath)
-    fields = filename.split('.')[0].split('_')
+    fields = filename.split('.')[0].split('__')
+    
+    league_str, year, team_str, index = fields
+    team: TeamName = TeamName(team_str)
+    league: League = League.from_string(league_str)
+    
     return TDP (
         filename = filename,
-        year = fields[0],
-        is_etdp = fields[1].lower() == 'etdp',
-        team = " ".join(fields[2:])
+        team = team,
+        year = year,
+        league = league
     )
 
 def find_all_tdps_and_add_to_database(db):
