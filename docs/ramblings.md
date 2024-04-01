@@ -53,3 +53,9 @@ Option 2 is probably best, with a proper sequence_number
 Denormalized Sentence:
   - TDP id, Paragraph id
   - Year/Team/League, Paragraph title+sequence
+
+# Use Cases
+## Store PDF
+## ? Delete PDF
+## Process PDF
+## List PDFs
