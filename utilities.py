@@ -32,33 +32,7 @@ def find_subset_tdps():
     tdps = [ tdp for tdp in tdps if any([ team in tdp.lower() for team in teams ]) ]
 
     return tdps
-
-# TDP file name format
-# soccer_midsize__2017__Hibikino-Musashi__0.pdf3
-# league__year__team__index.pdf
-def parse_tdp_name(filepath) -> TDP:
-    """Parse TDP file name and return a dictionary with the fields"""
-    logger.info(f"Parsing {filepath}")
-    filename = os.path.basename(filepath)
-    fields = filename.split('.')[0].split('__')
-    
-    league_str, year, team_str, index = fields
-    team: TeamName = TeamName(team_str)
-    league: League = League.from_string(league_str)
-    
-    return TDP (
-        filename = filename,
-        team = team,
-        year = year,
-        league = league
-    )
-
-def find_all_tdps_and_add_to_database(db):
-    tdps = find_all_tdps()
-    parsed = [parse_tdp_name(tdp) for tdp in tdps]    
-    for tdp in parsed:
-        db.post_tdp(tdp)
-    
+   
 def paragraph_to_sentences_embeddings(paragraph):
     sentences = paragraph.split('.')
     embeddings = E.embed(sentences)
