@@ -1,8 +1,10 @@
 # System libraries
-from abc import ABC, abstractmethod
-from azure.storage.blob import BlobServiceClient
 import os
-
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from abc import ABC, abstractmethod
+# Third party libraries
+from azure.storage.blob import BlobServiceClient
 # Local libraries
 from data_structures.TDPName import TDPName
 
@@ -79,12 +81,14 @@ class LocalFileManager(FileManager):
         return os.path.isfile(filepath)
 
 if __name__ == "__main__":
-
     from dotenv import load_dotenv
     load_dotenv()
 
     manager = LocalFileManager("tdps")
     print(f"{len(manager.list_pdfs())} PDFs stored locally")
 
-    manager = AzureFileManager(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
-    print(f"{len(manager.list_pdfs())} PDFs stored in Azure Blob Storage")
+    if os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING") is None:
+        print("Missing variable AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING in .env")
+    else:
+        manager = AzureFileManager(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
+        print(f"{len(manager.list_pdfs())} PDFs stored in Azure Blob Storage")
