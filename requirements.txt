@@ -6,5 +6,6 @@ sentence-transformers
 flask
 python-telegram-bot
 python-dotenv
+pymongo
 
 azure-storage-blob
