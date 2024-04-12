@@ -14,7 +14,7 @@ class FileManager(ABC):
     def store_pdf(filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
         raise NotImplementedError
 
-    def list_pdfs(self) -> list[TDPName]:
+    def list_pdfs(self) -> list[str]:
         raise NotImplementedError
 
     @abstractmethod
@@ -34,12 +34,12 @@ class AzureFileManager(FileManager):
     def store_pdf(filepath_in:str, overwrite:bool=False):
         pass
 
-    def list_pdfs(self) -> list[TDPName]:
+    def list_pdfs(self) -> list[str]:
         pdfs = self.container_client.list_blobs()
         pdfs = [ pdf for pdf in pdfs if pdf.name.endswith(".pdf") ]
         # TODO remove this hack
         pdfs = [ pdf for pdf in pdfs if "misc" not in pdf.name ]
-        pdfs = [ TDPName.from_filepath(pdf.name) for pdf in pdfs ]
+        # pdfs = [ TDPName.from_filepath(pdf.name) for pdf in pdfs ]
         return pdfs
 
     def delete_pdf():
@@ -65,7 +65,7 @@ class LocalFileManager(FileManager):
             raise FileNotFoundError(f"File {tdp_name} does not exist")
         os.remove(filepath)
 
-    def list_pdfs(self) -> list[TDPName]:
+    def list_pdfs(self) -> list[str]:
         pdfs = []
         for root, dirs, files in os.walk(self.root_dir):
             for file in files:
@@ -73,7 +73,7 @@ class LocalFileManager(FileManager):
                     filepath = os.path.join(root, file)
                     # TODO remove this hack
                     if "misc" in filepath: continue
-                    pdfs.append(TDPName.from_filepath(filepath))
+                    pdfs.append(filepath)
         return pdfs
 
     def pdf_exists(self, tdp_name: TDPName):

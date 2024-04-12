@@ -1,34 +1,13 @@
 from .Paragraph import Paragraph
 from .League import League
 from .TeamName import TeamName
-from .SentenceDenormalized import SentenceDenormalized
+from .TDPName import TDPName
 
 class TDP:
-    def __init__(self, id: int=None, filename: str=None, team: TeamName=None, year: int=None, league: League=None):
+    def __init__(self, tdp_name:TDPName, id: int=None):
         self.id:int = id
-        self.filename: str = filename
-        self.team: TeamName = team
-        self.year: int = year
-        self.league: League = league
+        self.tdp_name:TDPName = tdp_name
         self.paragraphs: list[Paragraph] = []
-
-        if self.year is not None:
-            self.year = int(self.year)
-
-    def denormalize(self):
-        sentences_denormalized_all = []
-        for i_paragraph, paragraph in enumerate(self.paragraphs):
-            for sentence in paragraph.sentences:
-                sentence_denormalized = SentenceDenormalized(
-                    **sentence.to_dict(),
-                    tdp_id = self.id,
-                    team = self.team,
-                    year = self.year,
-                    league = self.league,                    
-                    paragraph_id = paragraph.id,
-                )
-                sentences_denormalized_all.append(sentence_denormalized)
-        return sentences_denormalized_all   
 
     def add_paragraph(self, paragraph:Paragraph):
         self.paragraphs.append(paragraph)
@@ -41,13 +20,19 @@ class TDP:
 
     def __repr__(self) -> str:
         n_sentences = sum([len(paragraph.sentences) for paragraph in self.paragraphs])
-        return f"TDP(team={self.team}, year={self.year}, league={self.league}, n_paragraphs={len(self.paragraphs)}, n_sentences={n_sentences})"
+        return f"TDP(team={self.tdp_name.team_name.name_pretty}, year={self.tdp_name.year}, league={self.tdp_name.league.name_pretty}, n_paragraphs={len(self.paragraphs)}, n_sentences={n_sentences})"
     
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tdp_name": self.tdp_name.to_dict()
+        }
+
     def print_outlines(self):
         print("TDP Outline")
-        print(f"  Team: {self.team}")
-        print(f"  Year: {self.year}")
-        print(f"  League: {self.league}")
+        print(f"  Team: {self.tdp_name.team_name}")
+        print(f"  Year: {self.tdp_name.year}")
+        print(f"  League: {self.tdp_name.league}")
         print(f"  Paragraphs: {len(self.paragraphs)}")
         
         for paragraph in self.paragraphs:
@@ -57,9 +42,9 @@ class TDP:
 
     def print_full(self):
         print("TDP Full")
-        print(f"  Team: {self.team}")
-        print(f"  Year: {self.year}")
-        print(f"  League: {self.league}")
+        print(f"  Team: {self.tdp_name.team_name}")
+        print(f"  Year: {self.tdp_name.year}")
+        print(f"  League: {self.tdp_name.league}")
         print(f"  Paragraphs: {len(self.paragraphs)}")
         
         for paragraph in self.paragraphs:
@@ -72,3 +57,7 @@ class TDP:
             print("\n\n")
             
         print("  End of TDP")
+
+    @staticmethod
+    def from_filepath(filepath:str):
+        return TDP(TDPName.from_filepath(filepath))

@@ -10,6 +10,7 @@ from .Span import Span
 from .Image import Image
 
 from data_structures.TDP import TDP
+from data_structures.TDPName import TDPName
 from data_structures.Paragraph import Paragraph
 from data_structures.Sentence import Sentence
 
@@ -47,12 +48,13 @@ Things to know about paragraph_headers:
 """
 
 
-
 def process_pdf(pdf: str | fitz.Document) -> TDP:
     if isinstance(pdf, str):
         pdf: fitz.Document = fitz.open(pdf)
 
     logger.info(f"Processing {pdf.name}")
+
+    tdp = TDP.from_filepath(pdf.name)
 
     ### In the following steps, try to filter out as many sentence that are NOT normal paragraph sentences
     # For example, figure descriptions, page numbers, paragraph titles, etc.
@@ -62,8 +64,8 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
     spans, images = extract_raw_images_and_spans(pdf)
 
     if not len(spans):
-        logger.warning(f"No spans found in {pdf.name}") 
-        return
+        logger.info(f"No spans found in {pdf.name}") 
+        return tdp
     
     # Create mask that references all spans that are not normal text spans (figure descriptions, page numbers, paragraph titles, etc)
     spans_id_mask:list[int] = []
@@ -98,13 +100,6 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
     # anything after references is probably the bibliography
     spans_id_mask += list(range(0, abstract_id+1))
     spans_id_mask += list(range(references_id, spans[-1]['id'] + 1))
-
-    tdp = TDP()
-    try:
-        tdp = U.parse_tdp_name(pdf.name)
-    except Exception as e:
-        logger.warning(f"Could not parse TDP name from {pdf.name}. Error: {str(e)}")
-
 
     ### Split up remaining spans into paragraphs
     # Get ids of spans that are paragraph titles

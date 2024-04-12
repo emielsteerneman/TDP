@@ -11,7 +11,13 @@ class TeamName:
         
         if self.name is not None and self.name_pretty is None:
             self.name_pretty = self.name.replace("_", " ")
-        
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "name_pretty": self.name_pretty
+        }
+
     def __str__(self):
         return self.name_pretty
     

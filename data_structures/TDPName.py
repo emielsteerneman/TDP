@@ -12,8 +12,16 @@ class TDPName:
         self.year = int(year)
         self.index = index
     
-        self.filename = f"{self.league}__{self.year}__{self.team_name.name}__{self.index}" 
+        self.filename = f"{self.league.name}__{self.year}__{self.team_name.name}__{self.index}" 
         
+    def to_dict(self) -> dict:
+        return {
+            "league": self.league.to_dict(),
+            "team_name": self.team_name.to_dict(),
+            "year": self.year,
+            "index": self.index
+        }
+
     @staticmethod
     def from_filepath(filepath:str) -> TDPName:
         filename:str = os.path.basename(filepath)
