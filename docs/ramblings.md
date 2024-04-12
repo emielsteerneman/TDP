@@ -54,8 +54,8 @@ Denormalized Sentence:
   - TDP id, Paragraph id
   - Year/Team/League, Paragraph title+sequence
 
-# Use Cases
-## Store PDF
-## ? Delete PDF
-## Process PDF
-## List PDFs
+# Dependencies
+* data_structures -> []
+* data_access -> [data_structures, MyLogger]
+* Embedding -> [MyLogger]
+* extraction -> [MyLogger, utilities, data_structures, text_processing]

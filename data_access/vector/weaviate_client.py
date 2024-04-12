@@ -4,14 +4,11 @@ import pickle
 import weaviate
 import weaviate.classes as wvc
 import weaviate.classes.config as wvcc
-
 # Local libraries
 from data_structures.Sentence import Sentence
-from extraction import extractor as E
-import utilities as U
 from MyLogger import logger
 
-from data_access.client_interface import ClientInterface
+from data_access.vector.client_interface import ClientInterface
 
 class WeaviateClient(ClientInterface):
 

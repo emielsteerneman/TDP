@@ -1,19 +1,18 @@
-import fitz
-from MyLogger import logger
-import numpy as np
+# System libraries
 import re
-
-from .Semver import Semver
+# Third party libraries
+import fitz
+import numpy as np
+# Local libraries
+from MyLogger import logger
 import utilities as U
-
+from .Semver import Semver
 from .Span import Span
 from .Image import Image
-
 from data_structures.TDP import TDP
 from data_structures.TDPName import TDPName
 from data_structures.Paragraph import Paragraph
 from data_structures.Sentence import Sentence
-
 from text_processing import text_processing as TP
 
 # PyMuPDF documentation: https://buildmedia.readthedocs.org/media/pdf/pymupdf/latest/pymupdf.pdf
@@ -47,6 +46,36 @@ Things to know about paragraph_headers:
     3. They more often than not fit on one line
 """
 
+"""
+Blacklist and notes from old code
+
+# Blacklist because these papers don't contain loadable text. The text seems to be images or something weird..
+tdp_blacklist = ["./TDPs/2022/2022_TDP_Luhbots-Soccer.pdf", "./TDPs/2017/2017_TDP_ULtron.pdf"]
+# Blacklist because it's almost a perfect duplicate of their 2016 paper
+tdp_blacklist.append("./TDPs/2015/2015_ETDP_MRL.pdf") 
+# Blacklist because they also have a 2014 ETDP which contains this TDP and more
+tdp_blacklist.append("./TDPs/2014/2014_TDP_RoboDragons.pdf") 
+
+tdp_blacklist.append("./TDPs/2011/2011_TDP_MRL.pdf") 
+tdp_blacklist.append("./TDPs/2013/2013_TDP_MRL.pdf") 
+tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf") 
+
+# TT27o00
+# ./TDPs/2014/2014_ETDP_KIKS.pdf
+
+# WTF is going on with this paper
+# ./TDPs/2012/2012_TDP_RoboJackets.pdf
+# ./TDPs/2011/2011_TDP_ODENS.pdf
+
+# This paper should work fine with bold method
+# ./TDPs/2014/2014_TDP_ACES.pdf <- uses light instead of bold
+# ./TDPs/2014/2014_TDP_Owaribito-CU.pdf <- uses just font size
+
+# No Semvers
+# ./TDPs/2014/2014_TDP_RFC_Cambridge.pdf
+# Unparseable Semvers
+# ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
+"""
 
 def process_pdf(pdf: str | fitz.Document) -> TDP:
     if isinstance(pdf, str):
