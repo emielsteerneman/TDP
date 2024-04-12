@@ -1,0 +1,14 @@
+# https://stackoverflow.com/questions/987142/make-gitignore-ignore-everything-except-a-few-files
+
+# Ignore everything
+*
+
+!function_app.py
+!local.settings.json
+!host.json
+!.env
+!requirements.txt
+
+!MyLogger.py
+!data_access
+!data_structures
