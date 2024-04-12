@@ -6,6 +6,7 @@ logger.setLevel(logging.DEBUG)
 
 # create formatter
 formatter = logging.Formatter('%(asctime)s | %(levelname)8s | %(filename)s:%(funcName)s:%(lineno)d |  %(message)s')
+formatter = logging.Formatter('%(funcName)s:%(lineno)d | %(message)s')
 
 # command line logger
 ch = logging.StreamHandler()
