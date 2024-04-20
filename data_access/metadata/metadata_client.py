@@ -22,7 +22,8 @@ class MetadataClient(ABC):
 class MongoDBClient(MetadataClient):
     
     def __init__(self, connection_string:str):
-        self.client = MongoClient(connection_string)
+        self.client = MongoClient(connection_string, serverSelectionTimeoutMS = 3000)
+        MongoClient()
         self.ensure_collection_tdp()
 
     def count_tdps(self) -> int:
@@ -38,7 +39,8 @@ class MongoDBClient(MetadataClient):
             "year": tdp.tdp_name.year,
             "league": tdp.tdp_name.league.name,
             "index": tdp.tdp_name.index,
-            "filename": tdp.tdp_name.filename
+            "filename": tdp.tdp_name.filename,
+            "filehash": tdp.filehash
         }
 
         logger.info(f"Inserting TDP {tdp.tdp_name}")
@@ -58,6 +60,7 @@ class MongoDBClient(MetadataClient):
             team:str|list[str]=None, 
             year:int|list[int]=None, year_min:int=None, year_max:int=None,
             league:str|list[str]=None,
+            filehash:str=None,
             offset:int=0, limit:int=0
         ) -> list[TDP]:
         
@@ -80,13 +83,25 @@ class MongoDBClient(MetadataClient):
         if league is not None: 
             if isinstance(league, str): filters["league"] = { "$in": [league] }
             else:                       filters["league"] = { "$in": league }
+        # Filehash filter
+        if filehash is not None: filters["filehash"] = filehash
 
         # TODO replace skip and limit with $facet ( https://codebeyondlimits.com/articles/pagination-in-mongodb-the-only-right-way-to-implement-it-and-avoid-common-mistakes )
         tdp_cursor = col.find(filters).skip(offset).limit(limit)
         
         return [ 
-            TDP(TDPName.from_string(tdp["filename"])) 
+            TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"])) 
             for tdp in tdp_cursor ]
+
+    def drop_tdps(self):
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("tdp")
+        col.drop()
+
+    def list_leagues(self):
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("tdp")
+        return col.distinct("league")
 
     def ensure_collection_tdp(self):
         # self.client.drop_database("metadata")
@@ -110,7 +125,6 @@ class MongoDBClient(MetadataClient):
             ("index", pymongo.ASCENDING)
             # Unfortunately, the index cannot be unique becaue Azure CosmosDB does not support it for whatever stupid reason
         ])
-
 
     def test_performance(self):
 
@@ -196,3 +210,7 @@ if __name__ == "__main__":
     tdps = client.find_tdps(limit=10, offset=1)
     print(f"Found {len(tdps)} TDPs")
     for tdp in tdps: print(tdp.tdp_name.team_name, tdp.tdp_name.year)
+
+    leagues = client.list_leagues()
+    print(f"Found {len(leagues)} leagues")
+    for league in leagues: print("  -", league)

@@ -5,15 +5,14 @@ import fitz
 import numpy as np
 # Local libraries
 from MyLogger import logger
-import utilities as U
 from .Semver import Semver
 from .Span import Span
 from .Image import Image
-from data_structures.TDP import TDP
-from data_structures.TDPName import TDPName
+from data_structures.TDPStructure import TDPStructure
 from data_structures.Paragraph import Paragraph
 from data_structures.Sentence import Sentence
 from text_processing import text_processing as TP
+from . import utilities as U
 
 # PyMuPDF documentation: https://buildmedia.readthedocs.org/media/pdf/pymupdf/latest/pymupdf.pdf
 
@@ -77,13 +76,13 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 # ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
 """
 
-def process_pdf(pdf: str | fitz.Document) -> TDP:
+def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     if isinstance(pdf, str):
         pdf: fitz.Document = fitz.open(pdf)
 
     logger.info(f"Processing {pdf.name}")
 
-    tdp = TDP.from_filepath(pdf.name)
+    tdp_structure = TDPStructure()
 
     ### In the following steps, try to filter out as many sentence that are NOT normal paragraph sentences
     # For example, figure descriptions, page numbers, paragraph titles, etc.
@@ -94,7 +93,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
 
     if not len(spans):
         logger.info(f"No spans found in {pdf.name}") 
-        return tdp
+        return tdp_structure
     
     # Create mask that references all spans that are not normal text spans (figure descriptions, page numbers, paragraph titles, etc)
     spans_id_mask:list[int] = []
@@ -159,7 +158,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
             text_processed=title_processed,
         )
 
-        tdp.add_paragraph(paragraph)
+        tdp_structure.add_paragraph(paragraph)
 
         for sentence_raw, sentence_processed in zip(sentences_raw, sentences_processed):
             sentence = Sentence(
@@ -171,7 +170,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
     """"""""""""""" TDP IS NOW FILLED WITH PARAGRAPHS AND SENTENCES """""""""""""""
     
     ### Find image references
-    for paragraph in tdp.paragraphs:
+    for paragraph in tdp_structure.paragraphs:
         # Search for "Figure 1" or "Fig. 1" or "Fig 1"
         # TODO also search for "Figure 1a" or "Figure 1.12" ?
 
@@ -181,7 +180,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDP:
         referenced_images = [ image for image in images if image['figure_number'] in image_references ]
         paragraph.add_images(referenced_images)
 
-    return tdp    
+    return tdp_structure
                 
 
 def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[Image]]:
