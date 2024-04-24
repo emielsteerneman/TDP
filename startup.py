@@ -12,8 +12,9 @@ from MyLogger import logger
 
 def get_clients() -> tuple[MongoDBClient, AzureFileClient|LocalFileClient]:
 
-    ENVIRONMENT = os.getenv("ENVIRONMENT").upper()
+    ENVIRONMENT = os.getenv("ENVIRONMENT")
     if ENVIRONMENT is None: ENVIRONMENT = "LOCAL"
+    ENVIRONMENT = ENVIRONMENT.upper()
 
     if ENVIRONMENT not in ["LOCAL", "AZURE"]:
         raise ValueError("Invalid environment")

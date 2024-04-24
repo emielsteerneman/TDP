@@ -13,6 +13,8 @@ from telegram import Bot
 import startup
 from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import FileClient
+from data_structures.TDPName import TDPName
+from MyLogger import logger
 
 app = Flask(__name__, template_folder='webapp/templates', static_url_path='/static', static_folder='webapp/static')
 
@@ -82,6 +84,48 @@ def api_tdps():
     flask_response.headers['Content-Type'] = "application/json"
     flask_response.headers['Cache-Control'] = "max-age=604800, public"
     return flask_response
+
+def api_tdp(tdp_name:str, is_pdf:bool=False):
+
+    logger.info(f"API TDP {tdp_name} is_pdf={is_pdf}")
+
+    try:
+        tdp_name:TDPName = TDPName.from_string(tdp_name)
+    except ValueError as e:
+        logger.error(f"Invalid TDP Name {tdp_name}")
+        raise ValueError(f"Invalid TDP Name {tdp_name}")
+
+    if is_pdf:
+        tdp_exists = g.file_client.pdf_exists(tdp_name)
+    else:
+        tdp_exists = g.file_client.html_exists(tdp_name)
+    
+    if not tdp_exists:
+        logger.error(f"TDP {tdp_name} does not exist")
+        raise Exception("TDP does not exist")
+
+    if is_pdf:
+        return send_from_directory("static/pdf", tdp_name.to_filepath())
+    else:
+        return send_from_directory("static/html", tdp_name.to_filepath(ext="html"))
+
+@app.route("/api/tdp/<tdp_name>/pdf")
+def api_tdp_pdf(tdp_name:str):
+    return api_tdp(tdp_name, is_pdf=True)
+
+    # flask_response.headers['Content-Type'] = "application/json"
+    # flask_response.headers['Cache-Control'] = "max-age=604800, public"
+    # return flask_response
+
+@app.route("/api/tdp/<tdp_name>/html")
+def api_tdp_html(tdp_name:str):
+    return api_tdp(tdp_name, is_pdf=False)
+
+@app.route("/api/tdp/<tdp_name>/image/<image_idx>")
+def api_tdp_image(tdp_name:str, image_idx:int):
+    pass
+
+
 
 # @app.route('/TDPs/<year>/<filename>')
 # def download_file(year, filename):

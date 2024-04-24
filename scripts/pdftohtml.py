@@ -1,30 +1,48 @@
+# System libraries
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import shutil
 import subprocess
+import time
+# Third party libraries
+# Local libraries
+import startup
+metadata_client, file_client = startup.get_clients()
 
-def pdfs_to_html():
-    """Convert all TDP pdf files to html files"""
-     
-    PDFTOHTML_FOLDER_NAME = "pdftohtml_folder"
+pdfs = file_client.list_pdfs()
+
+command = ["pdftohtml", "-c", "-s", "-dataurls"]
+
+FOLDER = "tmp/pdftohtml"
+os.makedirs(FOLDER, exist_ok=True)
+
+for i_pdf, pdf in enumerate(pdfs):
+
+    print(f"Converting {i_pdf}/{len(pdfs)} {pdf.team_name.name_pretty}...")
+    
+    if file_client.html_exists(pdf): continue
+
+    pdf_path_in = file_client.get_pdf(pdf, no_copy=True)
+    pdf_path_out = f"{FOLDER}/to_convert.pdf"
+    pdf_path_html = pdf_path_out[:-4] + "-html.html"
+
+    try:
+
+        shutil.copyfile(pdf_path_in, pdf_path_out)
+        subprocess.call(command + [pdf_path_out], stdout=subprocess.DEVNULL)
         
-    command = ["pdftohtml", "-c", "-s", "-dataurls"]
-    for i_tdp_db, tdp_db in enumerate(tdps):
-        try:
-            # Create folder
-            os.makedirs(PDFTOHTML_FOLDER_NAME, exist_ok=True)
-            print(f"Converting {i_tdp_db}/{len(tdps)} {tdp_db.filename}...")
-            filepath = f"TDPs/{tdp_db.year}/{tdp_db.filename}"
-            shutil.copyfile(filepath, f"{PDFTOHTML_FOLDER_NAME}/{tdp_db.filename}")
-            
-            subprocess.call(command + [f"{PDFTOHTML_FOLDER_NAME}/{tdp_db.filename}"], stdout=subprocess.DEVNULL)
-            
-            # wer.pdf is converted to wer-html.html. Copy to static/tdps/id/tdp.html
-            filename_html_in = f"{PDFTOHTML_FOLDER_NAME}/{tdp_db.filename.split('.')[0]}-html.html"
-            filename_html_out = f"static/tdps/{tdp_db.id}/tdp.html"
-            os.makedirs(os.path.dirname(filename_html_out), exist_ok=True)
-            shutil.copyfile(filename_html_in, filename_html_out)
-        except Exception as e:
-            print(f"Error converting {tdp_db.filename}: {e}")
-        finally:
-            # Clean up folder
-            shutil.rmtree(f"{PDFTOHTML_FOLDER_NAME}")
+        file_client.store_html(pdf_path_html, pdf)
+
+        filesize_pdf_mb = os.path.getsize(pdf_path_out) / 1000 / 1000
+        filesize_html_mb = os.path.getsize(pdf_path_html) / 1000 / 1000
+        ratio = filesize_html_mb / filesize_pdf_mb
+        print(f"Converted from {filesize_pdf_mb:.2f} MB to {filesize_html_mb:.2f} MB ({ratio:.2f}x)")
+
+    except Exception as e:
+        pass
+
+    finally:
+        # Remove files
+        os.remove(pdf_path_out)
+        os.remove(pdf_path_html)

@@ -70,8 +70,9 @@ class TDPName:
             "index": self.index
         }
 
-    def to_filepath(self) -> str:
-        return os.path.join(*self.league.to_parts(), str(self.year), self.filename) + ".pdf"
+    def to_filepath(self, ext="pdf") -> str:
+        return os.path.join(*self.league.to_parts(), str(self.year), self.filename) + f".{ext}"
+    
 
     def __repr__(self):
         return self.filename
