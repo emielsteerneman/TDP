@@ -8,6 +8,7 @@ python-telegram-bot
 python-dotenv
 pymongo
 nltk
+python-dotenv
 
 azure-storage-blob
 azure-functions
