@@ -3,10 +3,10 @@ azure-storage-blob
 wget
 numpy
 PyMuPDF
-rank_bm25
-sentence-transformers
+# rank_bm25
+# sentence-transformers
 flask
 python-telegram-bot
 python-dotenv
 pymongo
-nltk
+# nltk
