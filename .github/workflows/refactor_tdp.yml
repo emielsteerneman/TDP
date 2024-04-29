@@ -7,7 +7,7 @@ name: Build and deploy Python project to Azure Function App - tdp
 on:
   push:
     branches:
-      - refactor
+      - fix_azure
   workflow_dispatch:
 
 env:
