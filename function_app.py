@@ -7,7 +7,7 @@ from azure import functions as func
 # Local libraries
 # from data_access.metadata.metadata_client import MongoDBClient
 
-load_dotenv()
+# load_dotenv()
 
 app = func.FunctionApp()
 
