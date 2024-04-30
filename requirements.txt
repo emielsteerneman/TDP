@@ -7,6 +7,6 @@ PyMuPDF
 # sentence-transformers
 flask
 python-telegram-bot
-python-dotenv
+# python-dotenv
 pymongo
 # nltk
