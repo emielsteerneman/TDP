@@ -5,7 +5,7 @@ from custom_dotenv import load_dotenv
 # Third party libraries
 from azure import functions as func
 # Local libraries
-# from data_access.metadata.metadata_client import MongoDBClient
+from data_access.metadata.metadata_client import MongoDBClient
 
 load_dotenv()
 
@@ -19,23 +19,27 @@ def metadata_find(req: func.HttpRequest):
     year = int(req.params.get('year')) if req.params.get('year') else None
     league = req.params.get('league')
 
-    d = {
-        "team": team,
-        "year": year,
-        "league": league
-    }
+    if team is None:
+        return func.HttpResponse("Team is required", status_code=400)
+    if year is None:
+        return func.HttpResponse("Year is required", status_code=400)
+    if league is None:
+        return func.HttpResponse("League is required", status_code=400)
+
+    # d = {
+    #     "team": team,
+    #     "year": year,
+    #     "league": league
+    # }
+    # return func.HttpResponse(json.dumps(d), mimetype="application/json")
 
     # Print all environment variables
     # for k, v in os.environ.items():
     #     print(f"----------------- {k} = {v}")
 
-    return os.environ.get("SOME_VARIABLE")
+    metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
+    tdps = metadata_client.find_tdps(team=team, year=year, league=league)
 
-    # return func.HttpResponse(json.dumps(d), mimetype="application/json")
+    json_response = json.dumps([ tdp.to_dict() for tdp in tdps ])
 
-    # metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
-    # tdps = metadata_client.find_tdps(team=team, year=year, league=league)
-
-    # json_response = json.dumps([ tdp.to_dict() for tdp in tdps ])
-
-    # return func.HttpResponse(json_response, mimetype="application/json")
+    return func.HttpResponse(json_response, mimetype="application/json")
