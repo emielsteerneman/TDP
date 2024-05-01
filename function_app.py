@@ -20,11 +20,11 @@ def metadata_find(req: func.HttpRequest):
     league = req.params.get('league')
 
     if team is None:
-        return func.HttpResponse("Team is required", status_code=400)
+        return "Team is required"
     if year is None:
-        return func.HttpResponse("Year is required", status_code=400)
+        return "Year is required"
     if league is None:
-        return func.HttpResponse("League is required", status_code=400)
+        return "League is required"
 
     # d = {
     #     "team": team,
