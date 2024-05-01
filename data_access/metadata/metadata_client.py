@@ -200,7 +200,7 @@ class MongoDBClient(MetadataClient):
 
 if __name__ == "__main__":
     
-    from dotenv import load_dotenv
+    from custom_dotenv import load_dotenv
     load_dotenv()
 
     print(os.getenv("MONGODB_CONNECTION_STRING"))

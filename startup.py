@@ -3,7 +3,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(__file__))
 # Third party libraries
-from dotenv import load_dotenv
+from custom_dotenv import load_dotenv
 load_dotenv()
 # Local libraries
 from data_access.metadata.metadata_client import MongoDBClient

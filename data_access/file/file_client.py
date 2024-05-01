@@ -160,7 +160,7 @@ class LocalFileClient(FileClient):
             return filepath_tmp
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
+    from custom_dotenv import load_dotenv
     load_dotenv()
 
     localmanager = LocalFileClient("tdps")
