@@ -1,13 +1,13 @@
 # System libraries
 import os
 import json
-from dotenv import load_dotenv
+from custom_dotenv import load_dotenv
 # Third party libraries
 from azure import functions as func
 # Local libraries
-# from data_access.metadata.metadata_client import MongoDBClient
+from data_access.metadata.metadata_client import MongoDBClient
 
-# load_dotenv()
+load_dotenv()
 
 app = func.FunctionApp()
 
@@ -25,7 +25,11 @@ def metadata_find(req: func.HttpRequest):
         "league": league
     }
 
-    return "Hello world!"
+    # Print all environment variables
+    # for k, v in os.environ.items():
+    #     print(f"----------------- {k} = {v}")
+
+    return os.environ.get("SOME_VARIABLE")
 
     # return func.HttpResponse(json.dumps(d), mimetype="application/json")
 
