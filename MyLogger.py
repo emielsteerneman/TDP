@@ -1,3 +1,4 @@
+import os
 import logging
 
 # create logger
@@ -14,8 +15,11 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-# file logger
-fh = logging.FileHandler('./logs/log1.txt')
-fh.setLevel(logging.INFO)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
+
+# os.makedirs("./logs", exist_ok=True)
+
+# # file logger
+# fh = logging.FileHandler('./logs/log1.txt')
+# fh.setLevel(logging.INFO)
+# fh.setFormatter(formatter)
+# logger.addHandler(fh)
