@@ -10,5 +10,6 @@
 !requirements.txt
 
 !MyLogger.py
+!custom_dotenv.py
 !data_structures
 !data_access
