@@ -1,7 +1,7 @@
 # System libraries
 import os
 import json
-from dotenv import load_dotenv
+from custom_dotenv import load_dotenv
 # Third party libraries
 from azure import functions as func
 # Local libraries
