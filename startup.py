@@ -10,7 +10,15 @@ from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import AzureFileClient, LocalFileClient
 from MyLogger import logger
 
+metadata_client = None
+file_client = None
+
 def get_clients() -> tuple[MongoDBClient, AzureFileClient|LocalFileClient]:
+
+    global metadata_client, file_client
+
+    if metadata_client is not None and file_client is not None:
+        return metadata_client, file_client
 
     ENVIRONMENT = os.getenv("ENVIRONMENT")
     if ENVIRONMENT is None: ENVIRONMENT = "LOCAL"
