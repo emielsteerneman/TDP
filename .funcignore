@@ -6,11 +6,11 @@
 !function_app.py
 !local.settings.json
 !host.json
-!.env
 !requirements.txt
 
-!MyLogger.py
 !app.py
 !custom_dotenv.py
 !data_structures
 !data_access
+!MyLogger.py
+!startup.py
