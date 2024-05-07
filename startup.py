@@ -20,22 +20,24 @@ def get_clients() -> tuple[MongoDBClient, AzureFileClient|LocalFileClient]:
     if metadata_client is not None and file_client is not None:
         return metadata_client, file_client
 
-    ENVIRONMENT = os.getenv("ENVIRONMENT")
-    if ENVIRONMENT is None: ENVIRONMENT = "LOCAL"
-    ENVIRONMENT = ENVIRONMENT.upper()
-
-    if ENVIRONMENT not in ["LOCAL", "AZURE"]:
-        raise ValueError("Invalid environment")
-
-    logger.info(f"Environment: {ENVIRONMENT}")
+    ENVIRONMENT:str = get_environment()
 
     if ENVIRONMENT == "LOCAL":
         metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
         file_client = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
     elif ENVIRONMENT == "AZURE":
         metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
-        file_client = AzureFileClient(os.getenv("AZURE_CONNECTION_STRING"))
+        file_client = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
 
     logger.info("Clients initialized successfully")
 
     return metadata_client, file_client
+
+def get_environment() -> str:
+    ENVIRONMENT = os.getenv("ENVIRONMENT")
+    if ENVIRONMENT is None: ENVIRONMENT = "LOCAL"
+    ENVIRONMENT = ENVIRONMENT.upper()
+
+    if ENVIRONMENT not in ["LOCAL", "AZURE"]:
+        raise ValueError("Invalid environment")
+    return ENVIRONMENT
