@@ -76,10 +76,62 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 # ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
 """
 
+def find_paragraphs_using_bold(spans: list[Span]) -> list[list[Span]]:
+    
+    all_x = np.array([ int(span['bbox'][0]) for span in spans ])
+
+    # import matplotlib.pyplot as plt
+
+    counts = {}
+    for x in all_x:
+        if x not in counts:
+            counts[x] = 0
+        counts[x] += 1
+
+    counts2 = [ [v,k] for k,v in counts.items() ]
+    counts2.sort(reverse=True)
+    
+    for v, k in counts2[:5]: print(v, k)
+
+    x_left_aligned = counts2[0][1]
+    print("x_left_aligned", x_left_aligned)
+
+    # plt.hist(all_x, bins=len(set(all_x)))
+    # plt.show()    
+    # print(np.unique(all_x))
+
+    exit() 
+
+    # Use xy as key
+    spans_bold = {}
+    
+    for i_span, span in enumerate(spans):
+        if not span["bold"]: continue
+        
+        txt = span["text"]
+        if txt.lower().startswith("fig") or txt.lower().startswith("table"): continue
+
+
+        if span["bold"]:
+            print(txt)
+            x1, y1, x2, y2 = [int(_) for _ in span['bbox']]
+            x, y, w, h = x1, y1, x2-x1, y2-y1
+            if y not in spans_bold:
+                spans_bold[y] = span
+            else:
+                spans_bold[y]['text'] += " " + txt
+
+    for y in spans_bold:
+        print(y, spans_bold[y]['text'])
+
+
+
 def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     if isinstance(pdf, str):
+        logger.info(f"Loading PDF from {pdf}")
         pdf: fitz.Document = fitz.open(pdf)
 
+    print(pdf)
     logger.info(f"Processing {pdf.name}")
 
     tdp_structure = TDPStructure()
@@ -90,6 +142,11 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     
     # Extract images and sentences
     spans, images = extract_raw_images_and_spans(pdf)
+
+    find_paragraphs_using_bold(spans)
+
+    exit()
+
 
     if not len(spans):
         logger.info(f"No spans found in {pdf.name}") 
@@ -360,6 +417,15 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[list[Span]], int, in
         int: The id of the span that indicates the start of the references paragraph
     """
 
+    """ TODO also find the start of sub(sub(subsubssubbubsusbubsubs)) paragraphs that do not start with a semver
+    These are often
+    * Written in bold
+    * Have large spacing between above sentences
+    * Are on the left of the page (not to be confused with "fig" which are also bold, but might be in the middle of the page)
+
+      
+    """
+
     logger.info(f"Finding paragraph headers for {len(spans)} spans")
 
     abstract_id: int = -1
@@ -531,8 +597,8 @@ def groupby_y_fontsize_page(spans: list[Span]) -> list[list[Span]]:
     return groups
 
 
-def is_bold(flags):
-    return flags & 2**4
+def is_bold(flags) -> bool:
+    return 0 < flags & 2**4
 
 
 def flags_decomposer(flags):
