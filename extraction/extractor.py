@@ -1,5 +1,6 @@
 # System libraries
 import re
+from collections import Counter
 # Third party libraries
 import fitz
 import numpy as np
@@ -76,62 +77,84 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 # ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
 """
 
-def find_paragraphs_using_bold(spans: list[Span]) -> list[list[Span]]:
+def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int, int]:
     
-    all_x = np.array([ int(span['bbox'][0]) for span in spans ])
+    x_left_aligned = Counter([ int(span['bbox'][0]) for span in spans ]).most_common(1)[0][0]
+    most_common_fontsize = Counter([ span['size'] for span in spans ]).most_common(1)[0][0]
+    most_common_font = Counter([ span['font'] for span in spans ]).most_common(1)[0][0]
 
-    # import matplotlib.pyplot as plt
+    logger.info(f"Left aligned x coordinate is {x_left_aligned}")
+    logger.info(f"Most common font size is {most_common_fontsize}")
+    logger.info(f"Most common font is {most_common_font}")
 
-    counts = {}
-    for x in all_x:
-        if x not in counts:
-            counts[x] = 0
-        counts[x] += 1
+    # Use y-coordinate as key
+    paragraph_spans = {}
 
-    counts2 = [ [v,k] for k,v in counts.items() ]
-    counts2.sort(reverse=True)
-    
-    for v, k in counts2[:5]: print(v, k)
+    abstract_id: int = -1
+    references_id: int = 999999  # Assuming there will be no more than 999999 spans in a TDP
+   
 
-    x_left_aligned = counts2[0][1]
-    print("x_left_aligned", x_left_aligned)
-
-    # plt.hist(all_x, bins=len(set(all_x)))
-    # plt.show()    
-    # print(np.unique(all_x))
-
-    exit() 
-
-    # Use xy as key
-    spans_bold = {}
-    
+    current_paragraph_i_span = -2
+    current_paragraph_y = 0
     for i_span, span in enumerate(spans):
-        if not span["bold"]: continue
         
-        txt = span["text"]
-        if txt.lower().startswith("fig") or txt.lower().startswith("table"): continue
+        # Skip:
+        # 1. Not-bold, most common font spans
+        # 2. Smaller than most common font size spans
+        # 3. Italic spans
+        if (not span["bold"] and span['font'] == most_common_font) or span['size'] < most_common_fontsize or span["italic"]: 
+            continue
+        
+        # Skip figure and table descriptions
+        if span["text"].lower().startswith("fig") or span["text"].lower().startswith("table"): 
+            continue
 
+        x, y, x2, y2 = [int(_) for _ in span['bbox_absolute']]
 
-        if span["bold"]:
-            print(txt)
-            x1, y1, x2, y2 = [int(_) for _ in span['bbox']]
-            x, y, w, h = x1, y1, x2-x1, y2-y1
-            if y not in spans_bold:
-                spans_bold[y] = span
-            else:
-                spans_bold[y]['text'] += " " + txt
+        # Find the distance to the span above. Need to search backwards because the spans are for whatever reason not always ordered by y-coordinate (page numbers industrial_logistics__2019__Solidus__0.pdf)
+        distance_to_span_above, idx = 0, 0
+        while distance_to_span_above <= 0 and 0 < i_span - idx:
+            distance_to_span_above = y - spans[i_span-idx]['bbox_absolute'][3]
+            idx += 1
 
-    for y in spans_bold:
-        print(y, spans_bold[y]['text'])
+        # print("  ??", f"{i_span - current_paragraph_i_span == 1}".rjust(5), f"y={y}, x={x}, page={span['page']}, font={span['font']}, size={span['size']:.2f} dtsa={int(distance_to_span_above):3}", span["text"])
 
+        # Start new paragraph-span group if the span:
+        # 1. Is the first paragraph-marked span on that y-coordinate
+        # 2. Is aligned to the left of the page
+        # 3. Is not too close to the span above
+        if y not in paragraph_spans and x == x_left_aligned and 5 < distance_to_span_above:
+            current_paragraph_i_span = i_span
+            current_paragraph_y = y
+            paragraph_spans[y] = [span]
+        else:
+            # If the span is not the first paragraph-marked span on that y-coordinate, add it to the current paragraph-span group
+            if current_paragraph_i_span == i_span-1:
+                current_paragraph_i_span = i_span
+                paragraph_spans[current_paragraph_y].append(span)
 
+    # exit()
+    for y in paragraph_spans:
+        span_group = paragraph_spans[y]
+        paragraph_title = " ".join([ _['text'] for _ in span_group ])
+        # print("   -", int(s['bbox'][1]), f"{s['distance_to_span_above']:.1f}", s['text'])
+        # print(paragraph_title)
+        # print("text above:", spans[s['i_span']-1]['text'])
+        # print("\n")
+        if "abstract" in paragraph_title.lower():
+            abstract_id = span_group[0]['id']
+            logger.info(f"Found abstract at span {abstract_id}")
+        if "reference" in paragraph_title.lower():
+            references_id = span_group[0]['id']
+            logger.info(f"Found references at span {references_id}")
+
+    return paragraph_spans.values(), abstract_id, references_id
 
 def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     if isinstance(pdf, str):
-        logger.info(f"Loading PDF from {pdf}")
+        # logger.info(f"Loading PDF from {pdf}")
         pdf: fitz.Document = fitz.open(pdf)
 
-    print(pdf)
     logger.info(f"Processing {pdf.name}")
 
     tdp_structure = TDPStructure()
@@ -142,11 +165,6 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     
     # Extract images and sentences
     spans, images = extract_raw_images_and_spans(pdf)
-
-    find_paragraphs_using_bold(spans)
-
-    exit()
-
 
     if not len(spans):
         logger.info(f"No spans found in {pdf.name}") 
@@ -176,10 +194,11 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
 
     ### Find all sentences that can make up a paragraph title
     logger.info("======== find_paragraph_headers ========")
-    paragraph_titles, abstract_id, references_id = find_paragraph_headers(spans)
+    # paragraph_span_groups, abstract_id, references_id = find_paragraph_headers(spans)
+    paragraph_span_groups, abstract_id, references_id = find_paragraphs_using_bold(spans)
 
     # Extend spans_id_mask with found paragraph titles, and abstract id and references id
-    for span_group in paragraph_titles:
+    for span_group in paragraph_span_groups:
         spans_id_mask += [ _['id'] for _ in span_group ]
     # Add to mask all spans before and after abstract and references. Anything before abstract is probably the title of the paper and
     # anything after references is probably the bibliography
@@ -188,10 +207,10 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
 
     ### Split up remaining spans into paragraphs
     # Get ids of spans that are paragraph titles
-    paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_titles ])
+    paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_span_groups ])
 
     # Create empty bin for each paragraph
-    paragraph_bins:list[list[Span]] = [ [] for _ in range(len(paragraph_titles)) ]
+    paragraph_bins:list[list[Span]] = [ [] for _ in range(len(paragraph_span_groups)) ]
     # Move each unmasked sentence into the correct bin
     for span in spans:
         # Skip any masked sentence (paragraph titles / pagenumbers / figure descriptions / etc)
@@ -204,7 +223,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
         # Place sentence into correct bin
         paragraph_bins[bin_idx].append(span)
 
-    for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_titles):
+    for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_span_groups):
         title_raw, title_processed = TP.process_raw_spans([ _['text'] for _ in paragraph_title ])
         title_raw, title_processed = " ".join(title_raw), " ".join(title_processed)
         
@@ -256,6 +275,8 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
     factory_id = 0
     spans, images = [], []
 
+    current_page_height:float = 0.0
+
     for i_page, page in enumerate(doc):
         # Disabled flag 0b1 to get rid of the stupid ligature characters such as ﬀ (CMDragons 2014 page 15, "The oﬀense ratio")
         # Find all flags here https://pymupdf.readthedocs.io/en/latest/app1.html#text-extraction-flags
@@ -285,13 +306,20 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
                         # Replace all whitespace with a single space, and remove leading and trailing whitespace
                         span["text"] = re.sub(r"\s+", " ", span["text"]).strip()
                         # Filter out spans that are now empty (yes it happens) (ACES 2015)
-                        if len(span["text"]) == 0:
-                            continue
+                        if len(span["text"]) == 0: continue
+                        
+                        # Move y according to the page height
+                        x1, y1, x2, y2 = span["bbox"]
+                        span["bbox_absolute"] = [x1, y1 + current_page_height, x2, y2 + current_page_height]
+                        
                         span["id"] = factory_id
                         span["bold"] = is_bold(span["flags"])
+                        span["italic"] = is_italic(span["flags"])
                         span["page"] = i_page
                         spans.append(Span(span))
                         factory_id += 1
+        
+        current_page_height += page.rect.height
 
     logger.info(f"Extracted {len(spans)} spans and {len(images)} images")
     return spans, images
@@ -313,7 +341,7 @@ def match_image_with_spans(
         tuple[list[Span], int]: The list of spans that are a description for the image, and the figure number of the image
     """
 
-    logger.info(f"Matching image with {len(spans)} spans")
+    # logger.info(f"Matching image with {len(spans)} spans")
 
     # Find all spans on the same page as the image
     page: int = image["page"]
@@ -349,7 +377,7 @@ def match_image_with_spans(
     # Given that the document width is somewhere between 585 and 615
     # image_centered = 280 < (x1 + x2) // 2 < 320
 
-    logger.debug(f"Found {len(spans)} spans that could be a description for image")
+    # logger.debug(f"Found {len(spans)} spans that could be a description for image")
 
     # Sort spans by y. This is needed because the order of the spans is not guaranteed (ACES 2015)
     # Also have to look at the bottom coordinate of the span! In KN2C 2015, the dot in "Figure 4." is weird..
@@ -399,7 +427,7 @@ def match_image_with_spans(
     spans = spans[: span_break_at + 1]
 
     description = " ".join([_["text"] for _ in spans])
-    logger.info(f"Found {len(spans)} spans for image with text '{description}'")
+    # logger.info(f"Found {len(spans)} spans for image with text '{description}'")
 
     return spans, figure_number
 
@@ -600,6 +628,8 @@ def groupby_y_fontsize_page(spans: list[Span]) -> list[list[Span]]:
 def is_bold(flags) -> bool:
     return 0 < flags & 2**4
 
+def is_italic(flags) -> bool:
+    return 0 < flags & 2**1
 
 def flags_decomposer(flags):
     """Make font flags human readable.
@@ -621,7 +651,6 @@ def flags_decomposer(flags):
     if flags & 2**4:
         l.append("bold")
     return ", ".join(l)
-
 
 def print_bbox(bbox: list[float]) -> None:
     return f"[x={bbox[0]:.0f}, y={bbox[1]:.0f} | x={bbox[2]:.0f}, y={bbox[3]:.0f}]"
