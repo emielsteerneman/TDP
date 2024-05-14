@@ -12,19 +12,64 @@ from pymongo.mongo_client import MongoClient
 # Local libraries
 from data_structures.TDP import TDP
 from data_structures.TDPName import TDPName
+from data_structures.Paragraph import Paragraph   
 from MyLogger import logger
 
-class MetadataClient(ABC):
+class MetadataTDPClient(ABC):
     @abstractmethod
-    def count_tdps(self) -> int:
+    def insert_tdp(self, tdp:TDP):
         raise NotImplementedError
-    
-class MongoDBClient(MetadataClient):
+
+    @abstractmethod
+    def find_tdps(self, 
+            team:str|list[str]=None, 
+            year:int|list[int]=None, year_min:int=None, year_max:int=None,
+            league:str|list[str]=None,
+            filehash:str=None,
+            offset:int=0, limit:int=0
+        ) -> list[TDP]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def drop_tdps(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def ensure_collection_tdp(self):
+        raise NotImplementedError
+
+class MetadataParagraphClient(ABC):
+    @abstractmethod
+    def insert_paragraph(self, paragraph:Paragraph):
+        raise NotImplementedError
+
+    # @abstractmethod
+    # def find_paragraphs(self, 
+    #         team:str|list[str]=None, 
+    #         year:int|list[int]=None, year_min:int=None, year_max:int=None,
+    #         league:str|list[str]=None,
+    #         filehash:str=None,
+    #         offset:int=0, limit:int=0
+    #     ) -> list[Paragraph]:
+    #     raise NotImplementedError
+
+    @abstractmethod
+    def drop_paragraphs(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def ensure_collection_paragraph(self):
+        raise NotImplementedError
+
+class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
     
     def __init__(self, connection_string:str):
         self.client = MongoClient(connection_string, serverSelectionTimeoutMS = 3000)
         MongoClient()
         self.ensure_collection_tdp()
+        self.ensure_collection_paragraph()
+
+    """ MetadataTDPClient implementation"""
 
     def count_tdps(self) -> int:
         db:pymongo.database.Database = self.client.get_database("metadata")
@@ -98,11 +143,6 @@ class MongoDBClient(MetadataClient):
         col:pymongo.collection.Collection = db.get_collection("tdp")
         col.drop()
 
-    def list_leagues(self):
-        db:pymongo.database.Database = self.client.get_database("metadata")
-        col:pymongo.collection.Collection = db.get_collection("tdp")
-        return col.distinct("league")
-
     def ensure_collection_tdp(self):
         # self.client.drop_database("metadata")
         # Ensure that database "metadata" exists
@@ -125,6 +165,58 @@ class MongoDBClient(MetadataClient):
             ("index", pymongo.ASCENDING)
             # Unfortunately, the index cannot be unique becaue Azure CosmosDB does not support it for whatever stupid reason
         ])
+
+    """ MetadataParagraphClient implementation"""
+
+    def insert_paragraph(self, paragraph:Paragraph):
+        
+        if paragraph.tdp_name is None:
+            raise ValueError(f"TDPName is None for paragraph {paragraph.text_raw}")
+        
+        paragraph_dict = {
+            "team": tdp.tdp_name.team_name.name,
+            "year": tdp.tdp_name.year,
+            "league": tdp.tdp_name.league.name,
+            "index": tdp.tdp_name.index,
+            "filename": paragraph.tdp_name.filename,
+            "sequence_id": paragraph.sequence_id,
+            "title": paragraph.text_raw,
+            "text": paragraph.content_raw(),
+        }
+
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("paragraph")
+
+        idx = col.insert_one(paragraph_dict)
+        logger.info(f"Inserted paragraph '{paragraph.text_raw}' with id {idx.inserted_id}")
+
+    def ensure_collection_paragraph(self):
+        # self.client.drop_database("metadata")
+        # Ensure that database "metadata" exists
+        if "metadata" not in self.client.list_database_names():
+            logger.info("Creating database 'metadata'")
+        db = self.client.get_database("metadata")
+
+        # Ensure that the collection "paragraph" exists
+        if "paragraph" not in db.list_collection_names():
+            logger.info("Creating collection 'paragraph'")
+        col = db.get_collection("paragraph")
+
+        # Ensure that compound index on team, year, league, index exists
+        if "team_1_year_1_league_1_index_1" not in col.index_information():
+            logger.info("Creating index on [team, year, league, index]")
+        col.create_index([
+            ("team", pymongo.ASCENDING), 
+            ("year", pymongo.ASCENDING), 
+            ("league", pymongo.ASCENDING),
+            ("index", pymongo.ASCENDING)
+            # Unfortunately, the index cannot be unique becaue Azure CosmosDB does not support it for whatever stupid reason
+        ])
+
+    def drop_paragraphs(self):
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("paragraph")
+        col.drop()
 
     def test_performance(self):
 
