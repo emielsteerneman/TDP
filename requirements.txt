@@ -10,3 +10,5 @@ python-telegram-bot
 #python-dotenv
 pymongo
 # nltk
+tiktoken
+openai
