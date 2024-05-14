@@ -1,14 +1,20 @@
-class TDPStructure:
-    def __init__(self):
-        self.sentences = []
-        self.paragraphs = []
-        self.images = []
+from .Paragraph import Paragraph
+from .Sentence import Sentence
+from .TDPName import TDPName
 
-    def add_paragraph(self, paragraph):
+class TDPStructure:
+    def __init__(self, tdp_name:TDPName=None):
+        self.sentences = []
+        self.paragraphs:list[Paragraph] = []
+        self.images = []
+        self.tdp_name:TDPName = tdp_name
+
+    def add_paragraph(self, paragraph:Paragraph):
+        paragraph.sequence_id = len(self.paragraphs)
         self.paragraphs.append(paragraph)
 
-    def get_sentences(self) -> list[str]:
-        sentences = []
+    def get_sentences(self) -> list[Sentence]:
+        sentences:list[Sentence] = []
         for paragraph in self.paragraphs:
             sentences += paragraph.sentences
         return sentences

@@ -11,6 +11,14 @@ class TDP:
         self.filehash:str = filehash
         self.structure:TDPStructure = structure
 
+    def propagate_information(self):
+        # Propagate tdp_name to all paragraphs and sentences
+        self.structure.tdp_name = self.tdp_name
+        for paragraph in self.structure.paragraphs:
+            paragraph.tdp_name = self.tdp_name
+            for sentence in paragraph.sentences:
+                sentence.tdp_name = self.tdp_name
+
     def __repr__(self) -> str:
         return f"TDP(team={self.tdp_name.team_name.name_pretty}, year={self.tdp_name.year}, league={self.tdp_name.league.name_pretty})"
     

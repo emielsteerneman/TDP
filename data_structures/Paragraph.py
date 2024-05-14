@@ -2,15 +2,16 @@ from __future__ import annotations
 import numpy as np
 from .Sentence import Sentence
 from .Image import Image
+from .TDPName import TDPName
 
 class Paragraph:
 	""" Class that represents a paragraph in the database """
 	def __init__(
-     	self, id:int=None, tdp_id:int=None, sequence_id:int=None,
+     	self, id:int=None, tdp_name:TDPName=None, sequence_id:int=None,
 		text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None
   	) -> None:
 		self.id = id
-		self.tdp_id = tdp_id
+		self.tdp_name = tdp_name
 		self.sequence_id = sequence_id	
 		self.text_raw = text_raw
 		self.text_processed = text_processed
@@ -43,7 +44,7 @@ class Paragraph:
 	""" Copy all fields from other paragraph to this paragraph if fields in this paragraph are None"""
 	def merge(self, other:Paragraph) -> None:
 		if self.id is None: self.id = other.id
-		if self.tdp_id is None: self.tdp_id = other.tdp_id
+		if self.tdp_name is None: self.tdp_name = other.tdp_name
 		if self.sequence_id is None: self.sequence_id = other.sequence_id
 		if self.text_raw is None: self.text_raw = other.text_raw
 		if self.text_processed is None: self.text_processed = other.text_processed
@@ -53,7 +54,7 @@ class Paragraph:
 	def to_dict(self) -> dict:
 		return {
 			"id": self.id,
-			"tdp_id": self.tdp_id,
+			"tdp_name": self.tdp_name,
 			"sequence_id": self.sequence_id,
 			"text_raw": self.text_raw,
 			"text_processed": self.text_processed,
@@ -70,7 +71,7 @@ class Paragraph:
 	def from_dict(paragraph:dict) -> Paragraph:
 		return Paragraph(
 			id=paragraph["id"],
-			tdp_id=paragraph["tdp_id"],
+			tdp_name=paragraph["tdp_name"],
 			sequence_id=paragraph["sequence_id"],
 			text_raw=paragraph["text_raw"],
 			text_processed=paragraph["text_processed"],
@@ -78,7 +79,7 @@ class Paragraph:
 		)
   
 	# def __str__(self) -> str:
-	# 	return f"Paragraph(id={self.id}, tdp_id={self.tdp_id}, title={self.text_raw})"
+	# 	return f"Paragraph(id={self.id}, tdp_name={self.tdp_name}, title={self.text_raw})"
 
 	# def __dict__(self):
 	# 	return self.to_dict()
