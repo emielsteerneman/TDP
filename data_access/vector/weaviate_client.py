@@ -2,17 +2,21 @@
 import numpy as np
 import pickle
 import weaviate
+import weaviate.client
 import weaviate.classes as wvc
 import weaviate.classes.config as wvcc
 # Local libraries
 from data_structures.Sentence import Sentence
+from data_structures.Paragraph import Paragraph
+from data_structures.TDPName import TDPName
 from MyLogger import logger
 
 from data_access.vector.client_interface import ClientInterface
 
 class WeaviateClient(ClientInterface):
 
-    collection_name_sentences = "Sentences"
+    collection_name_sentences = "Sentence"
+    collection_name_paragraphs = "Paragraph"
 
     def __init__(self, client: weaviate.client.Client) -> None:
         self.client = client
@@ -59,10 +63,51 @@ class WeaviateClient(ClientInterface):
 
         return sentences
 
-    def reset_everything(self) -> None:
-        self.create_weaviate_schema(self.client, overwrite=True, headless=True)
+    def store_paragraph(self, paragraph: Paragraph, embedding:np.ndarray) -> None:
+        """Stores a paragraph in the collection"""
+        if embedding is None:
+            raise ValueError("The paragraph does not have an embedding")
 
-    def create_weaviate_schema(self, overwrite: bool=False, headless: bool=False) -> wvc.Collection:
+        collection = self.client.collections.get(self.collection_name_paragraphs)
+        collection.data.insert(
+            properties={
+                "team": paragraph.tdp_name.team_name.name,
+                "year": paragraph.tdp_name.year,
+                "league": paragraph.tdp_name.league.name,
+                "index": paragraph.tdp_name.index,
+                "title": paragraph.text_raw,
+                "text": paragraph.content_raw()
+            },
+            vector = embedding.tolist()
+        )
+
+    def search_paragraphs_by_embedding(self, vector:np.array, team: str=None, year: int=None, league: str=None, limit:int=0) -> list[Paragraph]:
+        """Loads paragraphs from the collection"""
+        
+        for item in self.client.collections.get(self.collection_name_paragraphs).iterator():
+            print(item.uuid, item.properties.keys())
+
+        # filters = []
+        # if team is not None:
+        #     filters.append(wvc.query.Filter.by_property("team").equal(team))
+        # if year is not None:
+        #     filters.append(wvc.query.Filter.by_property("year").equal(year))
+        # if league is not None:
+        #     filters.append(wvc.query.Filter.by_property("league").equal(league))
+
+        collection = self.client.collections.get(self.collection_name_paragraphs)
+
+        results = collection.query.near_vector(vector.tolist(), limit=limit)
+        print(results)
+
+        # for r in results.objects:
+        #     print(r.properties["team"], r.properties["year"], r.properties["league"], r.properties["index"], r.properties["title"])
+
+    def reset_everything(self) -> None:
+        # self.create_weaviate_schema_sentences(self.client, overwrite=True, headless=True)
+        self.create_weaviate_schema_paragraphs(overwrite=True, headless=True)
+
+    def create_weaviate_schema_sentences(self, overwrite:bool=False, headless:bool=False):
         cn = self.collection_name_sentences
         
         if not overwrite and self.client.collections.exists(cn):
@@ -89,6 +134,42 @@ class WeaviateClient(ClientInterface):
                 wvcc.Property(name="team", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
                 wvcc.Property(name="year", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
                 wvcc.Property(name="league", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
+                wvcc.Property(name="index", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
+                wvcc.Property(name="text", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=True),
+            ]
+        )
+        logger.info(f"Created the schema '{cn}'")
+
+        return collection
+
+    def create_weaviate_schema_paragraphs(self, overwrite:bool=False, headless:bool=False):
+        cn = self.collection_name_paragraphs
+        
+        if not overwrite and self.client.collections.exists(cn):
+            return self.client.collections.get(cn)
+        
+        if not headless:
+            answer = input(f"You are about to delete the current schema '{cn}' and create a new one. Are you sure? (y/n)")
+            if answer.lower() != "y":
+                return self.client.collections.get(cn)
+
+        # Delete the schema if it exists
+        self.client.collections.delete(cn)
+        logger.info(f"Deleted the schema '{cn}'")
+
+        # Create the schema
+        # https://weaviate.io/developers/weaviate/manage-data/collections
+        collection = self.client.collections.create(
+            name=cn,
+            description="A paragraph",
+            vector_index_config=wvc.config.Configure.VectorIndex.flat(
+                distance_metric=wvc.config.VectorDistances.COSINE,
+            ),
+            properties=[
+                wvcc.Property(name="team", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
+                wvcc.Property(name="year", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
+                wvcc.Property(name="league", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
+                wvcc.Property(name="index", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
                 wvcc.Property(name="text", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=True),
             ]
         )
@@ -112,56 +193,3 @@ class WeaviateClient(ClientInterface):
             grpc_secure=False,
         )
         return WeaviateClient(client)
-
-
-
-# collection = client.collections.get("Sentence")
-# count = collection.aggregate.over_all(total_count=True).total_count
-# logger.info(f"Collection 'Sentence' has {count} objects")
-
-
-# collection = create_weaviate_schema(client, overwrite=True)
-
-# logger.info("Loading TDPs from pickle file..")
-# file = open("tdps.pkl", "rb")
-# tdps = pickle.load(file)
-# logger.info(f"Loaded {len(tdps)} TDPs from pickle file")
-# tdps = [tdp for tdp in tdps if tdp is not None]
-
-# for i_tdp, tdp in enumerate(tdps):
-#     logger.info(f"Processing TDP {i_tdp+1}/{len(tdps)}")
-
-#     embedder = Embeddings.instance
-
-#     sentences = [ sentence for paragraph in tdp.paragraphs for sentence in paragraph.sentences ]
-#     for sentence in sentences:
-#         vector = embedder.embed(sentence.text_raw)
-
-#         uuid = collection.data.insert(
-#             properties={
-#                 "team": tdp.team,
-#                 "year": tdp.year,
-#                 "league": tdp.league,
-#                 "text": sentence.text_raw
-#             },
-#             vector=vector.tolist()
-#         )
-#         # print(f"# {uuid} {sentence.text_raw}\n")
-
-# # Search
-# query = "What path planning techniques exist?"
-# vector = embedder.embed(query)
-# results = collection.query.near_vector(
-#     vector.tolist(), limit=5
-#     # filters=wvc.query.Filter.by_property("team").equal("SomeTeam")
-# )
-
-# print("\n\n")
-# # print(f"Results: {results}")
-
-# for r in results.objects:
-#     print("\n\n")
-#     print(r.properties["text"])
-
-
-# client.close()
