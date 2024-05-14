@@ -1,6 +1,9 @@
+# System libraries
+# Third party libraries
 import numpy as np
 from openai import OpenAI
-
+import tiktoken
+# Local libraries
 from MyLogger import logger
 
 class Embeddor:
@@ -24,10 +27,34 @@ class Embeddor:
 
         if is_str: 
             response = self.openai_client.embeddings.create(input = [text], model=model)
+            # print(response.usage.total_tokens, response.usage.prompt_tokens)
             return np.array(response.data[0].embedding)
         else:
             response = self.openai_client.embeddings.create(input = text, model=model)
             return np.array([ _.embedding for _ in response.data ])
+
+    def count_tokens(self, text:str, encoding:str="cl100k_base") -> int:
+        # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
+        return len(tiktoken.get_encoding(encoding).encode(text))
+    
+    def get_price_per_token(self, model:str="text-embedding-3-small") -> float:
+        """
+        Model                       Dollar / 1M tokens
+        text-embedding-3-small      $0.02
+        text-embedding-3-large      $0.13
+        text-embedding-ada-002      $0.10
+        gpt-3.5-turbo-0125          $0.50
+        gpt-4                       $30.00
+        gpt-4-turbo                 $10.00
+        gpt-4o                      $5.00   
+        """
+        if model == "text-embedding-3-small": return 0.02 / 1e6
+        if model == "text-embedding-3-large": return 0.13 / 1e6
+        if model == "text-embedding-ada-002": return 0.10 / 1e6
+        if model == "gpt-3.5-turbo-0125": return 0.50 / 1e6
+        if model == "gpt-4": return 30.00 / 1e6
+        if model == "gpt-4-turbo": return 10.00 / 1e6
+        if model == "gpt-4o": return 5.00 / 1e6
 
     def load_sentence_transformer(self) -> None:
         from sentence_transformers import SentenceTransformer
@@ -38,50 +65,5 @@ class Embeddor:
     def load_openai_client(self) -> None:
         self.openai_client = OpenAI()
         logger.info("OpenAI client loaded")
-    
-    # def get_similar_sentences(self, query_embedding:np.array, n=5) -> tuple[list[Database.Sentence_db], list[Database.Paragraph_db], list[Database.TDP_db]]:
-    #     if self.dbsentences is None:
-    #         raise Exception("No database sentences set")
-
-    #     # Get distance to all other sentence embeddings
-    #     distances = [ [self.cosine_similarity(query_embedding, sentence_db.embedding), sentence_db ] for sentence_db in self.dbsentences ]
-    #     # Sort by distance
-    #     distances.sort(key=lambda _: _[0], reverse=True)
-    #     distances = distances[:20]
-    #     # Add distance to sentences
-    #     results = [{ 'sentence':sentence_db, 'distance': float(distance) } for distance, sentence_db in distances ]
-
-    #     # Retrieve all paragraph ids from all selected sentences
-    #     paragraph_ids = [ _['sentence'].paragraph_id for _ in results ]
-    #     # Count occurences of paragraph_id
-    #     paragraph_occurences = {}
-    #     for paragraph_id in paragraph_ids:
-    #         paragraph_occurences[paragraph_id] = paragraph_occurences.get(paragraph_id, 0) + 1
-    #     paragraph_occurences = [ [k, v] for k, v in paragraph_occurences.items() ]
-    #     # Sort occurences
-    #     paragraph_occurences.sort(key=lambda _: _[1], reverse=True)
-    #     print("[Embeddings.py][gss] paragraph_occurences", paragraph_occurences)
-
-    #     # Get all paragraphs
-    #     paragraphs = [ db_instance.get_paragraph_by_id(paragraph_id) for paragraph_id, _ in paragraph_occurences ]
-    #     # Get top 3 paragraphs
-    #     top_paragraphs = paragraphs[:3]
-        
-    #     tdp_ids = list(set([ _.tdp_id for _ in paragraphs ]))
-    #     tdps = [ db_instance.get_tdp_by_id(tdp_id) for tdp_id in tdp_ids ]
-
-    #     sentences = [ _['sentence'] for _ in results ]
-
-    #     return sentences, top_paragraphs, tdps
-
-    # def query(self, sentence_:str):
-    #     sentence = sentence_
-    #     print(f"[Embeddings.py] Querying '{sentence}'")
-    #     words = [ word for word in sentence.lower().split(' ') if word not in sw_nltk ]
-    #     sentence = " ".join(words)
-    #     print(f"[Embeddings.py] Cleaned up '{sentence}'")
-    #     query_embedding = self.embed(sentence)
-    #     return *self.get_similar_sentences(query_embedding), sentence_, words
-
 
 instance = Embeddor()
