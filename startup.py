@@ -41,3 +41,5 @@ def get_environment() -> str:
     if ENVIRONMENT not in ["LOCAL", "AZURE"]:
         raise ValueError("Invalid environment")
     return ENVIRONMENT
+
+logger.info(f"ENVIRONMENT : {get_environment()}")
