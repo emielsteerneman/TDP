@@ -12,3 +12,4 @@ pymongo
 # nltk
 tiktoken
 openai
+pinecone-client
