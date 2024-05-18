@@ -63,10 +63,12 @@ pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/industrial/atwork/2021/i
 pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/simulation/2d/2022/soccer_simulation_2d__2022__FRA-UNIted__0.pdf"
 pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/humanoid/adult/2019/soccer_humanoid_adult__2019__Tsinghua_Hephaestus__0.pdf"
 pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/industrial/logistics/2019/industrial_logistics__2019__Solidus__0.pdf"
+# pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/simulation/3d/2019/soccer_simulation_3d__2019__FC_Portugal_3D__0.pdf"
+
 
 results = {}
 
-if False:
+if True:
     # os.system(f"xdg-open {pdf_path}")
     invalid, missing = process(pdf_path)
     results[pdf_path] = {
