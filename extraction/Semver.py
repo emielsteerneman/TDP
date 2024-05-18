@@ -24,7 +24,7 @@ class Semver:
 
     @staticmethod
     def is_semver(version):
-        """Check if a string is in the form of 'v1.2.3'"""
+        """Check if a string is in the form of '1.2.3'"""
         return re.match(r"^\d+(\.\d+)*\.?$", version) is not None
     
     def is_followup(self, other):

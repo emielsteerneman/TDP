@@ -78,14 +78,25 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 """
 
 def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int, int]:
-    
-    x_left_aligned = Counter([ int(span['bbox'][0]) for span in spans ]).most_common(1)[0][0]
+    """ Assumptions. Most paragraph titles
+    * are bold or (less common) italic
+    * start on the left of the page / column
+    * have a font size equal or larger than the normal text
+    * Start with a number (Semver)
+
+    Bonus assumption: Most if not all papers have a paragraph title "Introduction"
+    """
+
+    x_left_aligned = Counter([ span['bbox'][0] for span in spans ]).most_common(1)[0][0]
     most_common_fontsize = Counter([ span['size'] for span in spans ]).most_common(1)[0][0]
     most_common_font = Counter([ span['font'] for span in spans ]).most_common(1)[0][0]
 
     logger.info(f"Left aligned x coordinate is {x_left_aligned}")
     logger.info(f"Most common font size is {most_common_fontsize}")
     logger.info(f"Most common font is {most_common_font}")
+
+    print(Counter([ span['font'] for span in spans ]).most_common(999))
+    print(Counter([ span['bbox'][0] for span in spans ]).most_common(999))
 
     # Use y-coordinate as key
     paragraph_spans = {}
@@ -96,8 +107,36 @@ def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int
 
     current_paragraph_i_span = -2
     current_paragraph_y = 0
-    for i_span, span in enumerate(spans):
+
+    for i_span in range(-1, len(spans)-1):
+        i_span += 1
+        span = spans[i_span]
         
+        is_bold = span["bold"]
+        is_italic = span["italic"]
+        is_weird_font = span['font'] != most_common_font
+        is_larger_size = most_common_fontsize < span['size']
+        is_left_aligned = abs(span['bbox'][0] - x_left_aligned) < 1
+        is_semver = Semver.is_semver(span['text'])
+
+        total = is_bold + is_italic + is_weird_font + is_larger_size + is_left_aligned + is_semver
+        if total == 0 or span['size'] < most_common_fontsize: continue
+
+
+        print()
+        print(span['bbox'][0], span["text"])
+        print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", "N" if is_semver else " ")
+        
+        if span['text'].lower().endswith("introduction"):
+            print("INTRODUCTION", span['text'])
+            print(span['bbox'])
+            should_be_bold = is_bold
+            should_be_italic = is_italic
+            should_be_left_aligned = is_left_aligned
+        continue
+
+
+
         # Skip:
         # 1. Not-bold, most common font spans
         # 2. Smaller than most common font size spans
@@ -117,7 +156,7 @@ def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int
             distance_to_span_above = y - spans[i_span-idx]['bbox_absolute'][3]
             idx += 1
 
-        # print("  ??", f"{i_span - current_paragraph_i_span == 1}".rjust(5), f"y={y}, x={x}, page={span['page']}, font={span['font']}, size={span['size']:.2f} dtsa={int(distance_to_span_above):3}", span["text"])
+        print("  ??", f"{i_span - current_paragraph_i_span == 1}".rjust(5), f"y={y:5}, x={x:5}, page={span['page']}, font={span['font']}, size={span['size']:.2f} dtsa={int(distance_to_span_above):3}", span["text"])
 
         # Start new paragraph-span group if the span:
         # 1. Is the first paragraph-marked span on that y-coordinate
@@ -133,7 +172,8 @@ def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int
                 current_paragraph_i_span = i_span
                 paragraph_spans[current_paragraph_y].append(span)
 
-    # exit()
+    exit()
+
     for y in paragraph_spans:
         span_group = paragraph_spans[y]
         paragraph_title = " ".join([ _['text'] for _ in span_group ])
@@ -243,6 +283,10 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
             )
             paragraph.add_sentence(sentence)
     
+    ### Drop Reference paragraph
+    if tdp_structure.paragraphs[-1].text_raw.lower() == "references":
+        tdp_structure.paragraphs = tdp_structure.paragraphs[:-1]
+
     """"""""""""""" TDP IS NOW FILLED WITH PARAGRAPHS AND SENTENCES """""""""""""""
     
     ### Find image references
@@ -312,6 +356,18 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
                         x1, y1, x2, y2 = span["bbox"]
                         span["bbox_absolute"] = [x1, y1 + current_page_height, x2, y2 + current_page_height]
                         
+                        # Combine with previous span if they have the same y, font, flags, and fontsize
+                        if len(spans):
+                            previous_span = spans[-1]
+                            if (
+                                span["bbox"][1] == previous_span["bbox"][1]
+                                and span["font"] == previous_span["font"]
+                                and span["flags"] == previous_span["flags"]
+                                and span["size"] == previous_span["size"]
+                            ):
+                                previous_span["text"] += " " + span["text"]
+                                continue
+
                         span["id"] = factory_id
                         span["bold"] = is_bold(span["flags"])
                         span["italic"] = is_italic(span["flags"])
