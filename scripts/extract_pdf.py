@@ -12,6 +12,7 @@ from data_structures.TDPName import TDPName
 from data_structures.TDP import TDP
 from data_structures.TDPStructure import TDPStructure
 from data_structures.Paragraph import Paragraph
+from embedding.Embeddings import instance as embeddor
 from extraction import extractor
 from MyLogger import logger
 import startup
@@ -46,25 +47,20 @@ def process(pdf_path:str):
         print(f"Missing test for {filename}")
 
     for paragraph in tdp_structure.paragraphs:
-        print(f"{paragraph.sequence_id:3}: {paragraph.text_raw}")
+        print(f"{paragraph.sequence_id:3}: {paragraph.text_raw:40}, {embeddor.count_tokens(paragraph.content_raw()):5} tokens")
         # print(paragraph.content_raw(), "\n\n")
 
 
     return invalid, missing
 
 
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2023/soccer_smallsize__2023__RoboTeam_Twente__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/athome/domestic/2019/athome_domestic__2019__Austin_Villa__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/midsize/2010/soccer_midsize__2010__IsePorto__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2009/soccer_smallsize__2009__B-Smart__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/humanoid/kid/2019/soccer_humanoid_kid__2019__Ichiro__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/humanoid/teen/2019/soccer_humanoid_teen__2019__MRL__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/industrial/atwork/2021/industrial_atwork__2021___AutonOHM__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/simulation/2d/2022/soccer_simulation_2d__2022__FRA-UNIted__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/humanoid/adult/2019/soccer_humanoid_adult__2019__Tsinghua_Hephaestus__0.pdf"
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/industrial/logistics/2019/industrial_logistics__2019__Solidus__0.pdf"
-# pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/simulation/3d/2019/soccer_simulation_3d__2019__FC_Portugal_3D__0.pdf"
-
+# pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2023/soccer_smallsize__2023__RoboTeam_Twente__0.pdf"
+pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/humanoid/kid/2019/soccer_humanoid_kid__2019__I-KID__0.pdf" 
+pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2009/soccer_smallsize__2009__Plasma-Z__0.pdf"
+pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2022/soccer_smallsize__2022__RoboTeam_Twente__0.pdf"
+pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/simulation/2d/2021/soccer_simulation_2d__2021__Alice2D__0.pdf"
+# Super weird spaces all over the place
+pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2012/soccer_smallsize__2012__RoboJackets__0.pdf"
 
 results = {}
 
