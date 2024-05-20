@@ -77,7 +77,35 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 # ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
 """
 
-def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int, int]:
+def bounding_boxes_overlap_y(span1: Span, span2: Span) -> float:
+    """Check if two spans overlap in the y direction. This is useful to determine if two spans are part of the same
+    paragraph.
+
+    Args:
+        span1 (Span): The first span
+        span2 (Span): The second span
+
+    Returns:
+        float: the overlap as a fraction of the total combined height of the two spans
+    """
+    
+    y1, y2 = span1["bbox_absolute"][1], span1["bbox_absolute"][3]
+    y3, y4 = span2["bbox_absolute"][1], span2["bbox_absolute"][3]
+
+    if y2 < y3 or y4 < y1:
+        return 0.0
+    
+    return min(y2, y4) - max(y1, y3) / (y2 - y1 + y4 - y3)
+
+def printgroups(groups):
+    for group in groups:
+        print()
+        print("GROUP")
+        for span in group:
+            print(f"{span['span']['bbox_absolute'][1]:.0f}", span['span']["text"])
+            print("B" if span['is_bold'] else " ", "I" if span['is_italic'] else " ", "F" if span['is_weird_font'] else " ", "S" if span['is_larger_size'] else " ", "L" if span['is_left_aligned'] else " ", span["semver_level"] if 0 < span["semver_level"] else " ", "D" if span['has_spacing'] else " ", f"{span['span']['size']:.2f}", f"{span['distance_to_span_above']:.2f}")
+
+def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[Span], int, int]:
     """ Assumptions. Most paragraph titles
     * are bold or (less common) italic
     * start on the left of the page / column
@@ -90,105 +118,172 @@ def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[list[Span]], int
     x_left_aligned = Counter([ span['bbox'][0] for span in spans ]).most_common(1)[0][0]
     most_common_fontsize = Counter([ span['size'] for span in spans ]).most_common(1)[0][0]
     most_common_font = Counter([ span['font'] for span in spans ]).most_common(1)[0][0]
+    most_common_line_height = Counter([ span['bbox'][3] - span['bbox'][1] for span in spans ]).most_common(1)[0][0]
 
     logger.info(f"Left aligned x coordinate is {x_left_aligned}")
     logger.info(f"Most common font size is {most_common_fontsize}")
     logger.info(f"Most common font is {most_common_font}")
+    logger.info(f"Most common line height is {most_common_line_height}")
 
-    print(Counter([ span['font'] for span in spans ]).most_common(999))
-    print(Counter([ span['bbox'][0] for span in spans ]).most_common(999))
-
-    # Use y-coordinate as key
-    paragraph_spans = {}
+    # print(Counter([ span['font'] for span in spans ]).most_common(999))
+    # print(Counter([ span['bbox'][0] for span in spans ]).most_common(999))
 
     abstract_id: int = -1
     references_id: int = 999999  # Assuming there will be no more than 999999 spans in a TDP
-   
 
-    current_paragraph_i_span = -2
-    current_paragraph_y = 0
+    spans_selected = []
 
     for i_span in range(-1, len(spans)-1):
         i_span += 1
         span = spans[i_span]
-        
+
+        ### Get features
         is_bold = span["bold"]
         is_italic = span["italic"]
         is_weird_font = span['font'] != most_common_font
         is_larger_size = most_common_fontsize < span['size']
         is_left_aligned = abs(span['bbox'][0] - x_left_aligned) < 1
-        is_semver = Semver.is_semver(span['text'])
-
-        total = is_bold + is_italic + is_weird_font + is_larger_size + is_left_aligned + is_semver
-        if total == 0 or span['size'] < most_common_fontsize: continue
-
-
-        print()
-        print(span['bbox'][0], span["text"])
-        print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", "N" if is_semver else " ")
+        possible_semver = span['text'].split(" ")[0]
         
-        if span['text'].lower().endswith("introduction"):
-            print("INTRODUCTION", span['text'])
-            print(span['bbox'])
-            should_be_bold = is_bold
-            should_be_italic = is_italic
-            should_be_left_aligned = is_left_aligned
-        continue
-
-
-
-        # Skip:
-        # 1. Not-bold, most common font spans
-        # 2. Smaller than most common font size spans
-        # 3. Italic spans
-        if (not span["bold"] and span['font'] == most_common_font) or span['size'] < most_common_fontsize or span["italic"]: 
-            continue
-        
-        # Skip figure and table descriptions
-        if span["text"].lower().startswith("fig") or span["text"].lower().startswith("table"): 
-            continue
-
-        x, y, x2, y2 = [int(_) for _ in span['bbox_absolute']]
+        semver_level = 0
+        if Semver.is_major_semver(possible_semver) and Semver.parse(possible_semver).A < 100: semver_level = 1
+        if Semver.is_minor_semver(possible_semver) and Semver.parse(possible_semver).B < 100: semver_level = 2
+        if Semver.is_patch_semver(possible_semver) and Semver.parse(possible_semver).C < 100: semver_level = 3
 
         # Find the distance to the span above. Need to search backwards because the spans are for whatever reason not always ordered by y-coordinate (page numbers industrial_logistics__2019__Solidus__0.pdf)
         distance_to_span_above, idx = 0, 0
         while distance_to_span_above <= 0 and 0 < i_span - idx:
-            distance_to_span_above = y - spans[i_span-idx]['bbox_absolute'][3]
+            distance_to_span_above = span['bbox_absolute'][1] - spans[i_span-idx]['bbox_absolute'][3]
             idx += 1
+        has_spacing = most_common_line_height < distance_to_span_above
 
-        print("  ??", f"{i_span - current_paragraph_i_span == 1}".rjust(5), f"y={y:5}, x={x:5}, page={span['page']}, font={span['font']}, size={span['size']:.2f} dtsa={int(distance_to_span_above):3}", span["text"])
 
-        # Start new paragraph-span group if the span:
-        # 1. Is the first paragraph-marked span on that y-coordinate
-        # 2. Is aligned to the left of the page
-        # 3. Is not too close to the span above
-        if y not in paragraph_spans and x == x_left_aligned and 5 < distance_to_span_above:
-            current_paragraph_i_span = i_span
-            current_paragraph_y = y
-            paragraph_spans[y] = [span]
-        else:
-            # If the span is not the first paragraph-marked span on that y-coordinate, add it to the current paragraph-span group
-            if current_paragraph_i_span == i_span-1:
-                current_paragraph_i_span = i_span
-                paragraph_spans[current_paragraph_y].append(span)
 
-    exit()
+        # print()
+        # print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
+        # print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
+    
 
-    for y in paragraph_spans:
-        span_group = paragraph_spans[y]
-        paragraph_title = " ".join([ _['text'] for _ in span_group ])
-        # print("   -", int(s['bbox'][1]), f"{s['distance_to_span_above']:.1f}", s['text'])
-        # print(paragraph_title)
-        # print("text above:", spans[s['i_span']-1]['text'])
-        # print("\n")
-        if "abstract" in paragraph_title.lower():
-            abstract_id = span_group[0]['id']
-            logger.info(f"Found abstract at span {abstract_id}")
-        if "reference" in paragraph_title.lower():
-            references_id = span_group[0]['id']
-            logger.info(f"Found references at span {references_id}")
 
-    return paragraph_spans.values(), abstract_id, references_id
+        ### Skip spans that are presumably not paragraph titles
+        total = is_bold + is_italic + is_weird_font + is_larger_size + is_left_aligned + (0<semver_level)
+        if total == 0: continue
+        if span['size'] < most_common_fontsize: continue
+        if span['size'] <= most_common_fontsize and not is_bold and not is_italic and semver_level == 0: continue
+        if len(span['text']) <= 1: continue
+        if span["text"].lower().startswith("fig") or span["text"].lower().startswith("table"): continue
+
+        # Find if there are any overlapping spans on the left of the current span
+        has_overlap = False
+        for span_other in spans:
+            if span['page'] != span_other['page']: continue
+            if span['id'] == span_other['id']: continue
+            if bounding_boxes_overlap_y(span, span_other) < 0.5: continue
+            if span['bbox_absolute'][0] < span_other['bbox_absolute'][0]: continue
+            has_overlap = True
+            break
+
+        spans_selected.append(
+            {
+                "span": span,
+                "is_bold": is_bold,
+                "is_italic": is_italic,
+                "is_weird_font": is_weird_font,
+                "is_larger_size": is_larger_size,
+                "is_left_aligned": is_left_aligned,
+                "semver_level": semver_level,
+                "has_spacing": has_spacing,
+                "distance_to_span_above": distance_to_span_above,
+                "has_overlap": has_overlap,
+            }
+        )
+
+        # print()
+        # print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
+        # print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
+    
+    span_abstract, span_reference = None, None
+    for span in spans_selected:
+        if span_abstract is None and "abstract" in span['span']['text'].lower():
+            span_abstract = span['span']
+            logger.info(f"Found abstract at span y={span_abstract['bbox_absolute'][1]}")
+        if span_reference is None and "reference" in span['span']['text'].lower():
+            span_reference = span['span']
+            logger.info(f"Found references at span y={span_reference['bbox_absolute'][1]}")
+
+    # Remove all selected spans above abstract or below reference
+    if span_abstract is not None:
+        spans_selected = [ _ for _ in spans_selected if span_abstract['bbox_absolute'][1] <= _['span']['bbox_absolute'][1] ]
+    if span_reference is not None:
+        spans_selected = [ _ for _ in spans_selected if _['span']['bbox_absolute'][1] <= span_reference['bbox_absolute'][1] ]
+
+
+    ### Group spans based on features is_bold, is_italic, font, sinze, left_aligned, semver
+    features = ['is_bold', 'is_italic', 'is_weird_font', 'is_larger_size', 'semver_level', 'has_overlap']
+    groups = []
+    for span in spans_selected:
+        found = False
+        for group in groups:
+            if all([ span[feature] == group[0][feature] for feature in features ]):
+                group.append(span)
+                found = True
+                break
+        if not found:
+            groups.append([ span ])
+    
+    # printgroups(groups)
+
+    # Find group with semvers
+    major_group = [ g for g in groups if g[0]['semver_level'] == 1 and Semver.parse(g[0]['span']['text'].split(" ")[0]).A <= 1 ]
+    minor_group = [ g for g in groups if g[0]['semver_level'] == 2 and Semver.parse(g[0]['span']['text'].split(" ")[0]).B <= 1 ]
+    patch_group = [ g for g in groups if g[0]['semver_level'] == 3 and Semver.parse(g[0]['span']['text'].split(" ")[0]).C <= 1 ]
+
+    spans_final = []
+    if len(major_group) == 1:
+        spans_final += [ _['span'] for _ in major_group[0] ]
+    if len(major_group) == 1 and len(minor_group) == 1:
+        spans_final += [ _['span'] for _ in minor_group[0] ]
+    if len(major_group) == 1 and len(minor_group) == 1 and len(patch_group) == 1:
+        spans_final += [ _['span'] for _ in patch_group[0] ]
+
+    possible_semver_groups = []
+    for major in major_group:
+        semver_group1 = [ _['span'] for _ in major ]
+        possible_semver_groups.append(semver_group1)
+        for minor in minor_group:
+            semver_group2 = semver_group1[:] + [ _['span'] for _ in minor ]
+            possible_semver_groups.append(semver_group2)
+            for patch in patch_group:
+                semver_group3 = semver_group2[:] + [ _['span'] for _ in patch ]
+                possible_semver_groups.append(semver_group3)
+
+    print(f"N POSSIBLE GROUPS: {len(possible_semver_groups)}")
+
+    longest_chain = []
+
+    for group in possible_semver_groups:
+        # print("\n==GROUP")
+        group = sorted(group, key = lambda s: s['bbox_absolute'][1])
+        # for s in group: print(s['text'])
+        semvers = [ Semver.parse(s['text'].split(" ")[0]) for s in group ]
+        for semver, span in zip(semvers, group):
+            semver.span = span
+
+        # print(semvers)
+        resolved_semvers = U.resolve_semvers(semvers)
+        if len(longest_chain) < len(resolved_semvers):
+            longest_chain = [ _.span for _ in resolved_semvers ]
+
+    if len(longest_chain) == 0:
+        logger.error(f"Found no semvers")
+        raise Exception("No semvers found")
+
+    ### Sort spans_final by y
+    longest_chain.sort(key=lambda _: _['bbox_absolute'][1])
+
+    abstract_id = span_abstract['id'] if span_abstract is not None else -1
+    references_id = span_reference['id'] if span_reference is not None else 999999
+    return longest_chain, abstract_id, references_id
 
 def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     if isinstance(pdf, str):
@@ -235,11 +330,11 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     ### Find all sentences that can make up a paragraph title
     logger.info("======== find_paragraph_headers ========")
     # paragraph_span_groups, abstract_id, references_id = find_paragraph_headers(spans)
-    paragraph_span_groups, abstract_id, references_id = find_paragraphs_using_bold(spans)
+    paragraph_spans, abstract_id, references_id = find_paragraphs_using_bold(spans)
 
     # Extend spans_id_mask with found paragraph titles, and abstract id and references id
-    for span_group in paragraph_span_groups:
-        spans_id_mask += [ _['id'] for _ in span_group ]
+    spans_id_mask += [ _['id'] for _ in paragraph_spans ]
+    
     # Add to mask all spans before and after abstract and references. Anything before abstract is probably the title of the paper and
     # anything after references is probably the bibliography
     spans_id_mask += list(range(0, abstract_id+1))
@@ -247,10 +342,10 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
 
     ### Split up remaining spans into paragraphs
     # Get ids of spans that are paragraph titles
-    paragraph_title_ids = np.array([ _[0]['id'] for _ in paragraph_span_groups ])
+    paragraph_title_ids = np.array([ _['id'] for _ in paragraph_spans ])
 
     # Create empty bin for each paragraph
-    paragraph_bins:list[list[Span]] = [ [] for _ in range(len(paragraph_span_groups)) ]
+    paragraph_bins:list[list[Span]] = [ [] for _ in range(len(paragraph_spans)) ]
     # Move each unmasked sentence into the correct bin
     for span in spans:
         # Skip any masked sentence (paragraph titles / pagenumbers / figure descriptions / etc)
@@ -263,8 +358,8 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
         # Place sentence into correct bin
         paragraph_bins[bin_idx].append(span)
 
-    for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_span_groups):
-        title_raw, title_processed = TP.process_raw_spans([ _['text'] for _ in paragraph_title ])
+    for paragraph_bin, paragraph_title in zip(paragraph_bins, paragraph_spans):
+        title_raw, title_processed = TP.process_raw_spans([ paragraph_title['text'] ])
         title_raw, title_processed = " ".join(title_raw), " ".join(title_processed)
         
         sentences_raw, sentences_processed = TP.process_raw_spans([ _['text'] for _ in paragraph_bin ])
@@ -343,10 +438,14 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
             else:
                 for lines in block["lines"]:  # iterate through the text lines
                     for span in lines["spans"]:  # iterate through the text spans
+                        # Needed because of soccer_smallsize__2009__Plasma-Z__0.pdf
+                        span["text"] = span["text"].replace(u'\xa0', u' ')
+
                         # Replace weird characters that python can't really deal with (OMID 2020 4.1 'score')
                         span["text"] = (
                             span["text"].encode("ascii", errors="ignore").decode()
                         )
+                        
                         # Replace all whitespace with a single space, and remove leading and trailing whitespace
                         span["text"] = re.sub(r"\s+", " ", span["text"]).strip()
                         # Filter out spans that are now empty (yes it happens) (ACES 2015)
@@ -360,12 +459,14 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
                         if len(spans):
                             previous_span = spans[-1]
                             if (
-                                span["bbox"][1] == previous_span["bbox"][1]
+                                0.9 < bounding_boxes_overlap_y(previous_span, span)
                                 and span["font"] == previous_span["font"]
                                 and span["flags"] == previous_span["flags"]
-                                and span["size"] == previous_span["size"]
+                                and abs(span["size"] - previous_span["size"]) < 0.2
+                                # and span["size"] == previous_span["size"]
                             ):
                                 previous_span["text"] += " " + span["text"]
+                                previous_span["size"] = max(previous_span["size"], span["size"])
                                 continue
 
                         span["id"] = factory_id

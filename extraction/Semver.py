@@ -27,6 +27,18 @@ class Semver:
         """Check if a string is in the form of '1.2.3'"""
         return re.match(r"^\d+(\.\d+)*\.?$", version) is not None
     
+    @staticmethod
+    def is_major_semver(version):
+        return Semver.is_semver(version) and version.strip(".").count(".") == 0
+
+    @staticmethod
+    def is_minor_semver(version):
+        return Semver.is_semver(version) and version.strip(".").count(".") == 1
+    
+    @staticmethod
+    def is_patch_semver(version):
+        return Semver.is_semver(version) and version.strip(".").count(".") == 2
+
     def is_followup(self, other):
         if self.A == other.A:
             if self.B == other.B:
