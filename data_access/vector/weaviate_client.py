@@ -15,8 +15,8 @@ from data_access.vector.client_interface import ClientInterface
 
 class WeaviateClient(ClientInterface):
 
-    collection_name_sentences = "Sentence"
-    collection_name_paragraphs = "Paragraph"
+    COLLECTION_NAME_SENTENCE = "Sentence"
+    COLLECTION_NAME_PARAGRAPH = "Paragraph"
 
     def __init__(self, client: weaviate.client.Client) -> None:
         self.client = client
@@ -26,7 +26,7 @@ class WeaviateClient(ClientInterface):
         if sentence.embedding is None:
             raise ValueError("The sentence does not have an embedding")
 
-        collection = self.client.collections.get(self.collection_name_sentences)
+        collection = self.client.collections.get(self.COLLECTION_NAME_SENTENCE)
         collection.data.insert(
             properties={
                 "team": sentence.team,
@@ -68,7 +68,7 @@ class WeaviateClient(ClientInterface):
         if embedding is None:
             raise ValueError("The paragraph does not have an embedding")
 
-        collection = self.client.collections.get(self.collection_name_paragraphs)
+        collection = self.client.collections.get(self.COLLECTION_NAME_PARAGRAPH)
         collection.data.insert(
             properties={
                 "team": paragraph.tdp_name.team_name.name,
@@ -84,7 +84,7 @@ class WeaviateClient(ClientInterface):
     def search_paragraphs_by_embedding(self, vector:np.array, team: str=None, year: int=None, league: str=None, limit:int=0) -> list[Paragraph]:
         """Loads paragraphs from the collection"""
         
-        for item in self.client.collections.get(self.collection_name_paragraphs).iterator():
+        for item in self.client.collections.get(self.COLLECTION_NAME_PARAGRAPH).iterator():
             print(item.uuid, item.properties.keys())
 
         # filters = []
@@ -95,7 +95,7 @@ class WeaviateClient(ClientInterface):
         # if league is not None:
         #     filters.append(wvc.query.Filter.by_property("league").equal(league))
 
-        collection = self.client.collections.get(self.collection_name_paragraphs)
+        collection = self.client.collections.get(self.COLLECTION_NAME_PARAGRAPH)
 
         results = collection.query.near_vector(vector.tolist(), limit=limit)
         print(results)
@@ -108,7 +108,7 @@ class WeaviateClient(ClientInterface):
         self.create_weaviate_schema_paragraphs(overwrite=True, headless=True)
 
     def create_weaviate_schema_sentences(self, overwrite:bool=False, headless:bool=False):
-        cn = self.collection_name_sentences
+        cn = self.COLLECTION_NAME_SENTENCE
         
         if not overwrite and self.client.collections.exists(cn):
             return self.client.collections.get(cn)
@@ -143,7 +143,7 @@ class WeaviateClient(ClientInterface):
         return collection
 
     def create_weaviate_schema_paragraphs(self, overwrite:bool=False, headless:bool=False):
-        cn = self.collection_name_paragraphs
+        cn = self.COLLECTION_NAME_PARAGRAPH
         
         if not overwrite and self.client.collections.exists(cn):
             return self.client.collections.get(cn)
