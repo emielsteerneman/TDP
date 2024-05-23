@@ -1,7 +1,9 @@
 # System libraries
+import os
 # Third party libraries
 import numpy as np
 from openai import OpenAI
+from pinecone_text.sparse import BM25Encoder
 import tiktoken
 # Local libraries
 from MyLogger import logger
@@ -10,16 +12,17 @@ class Embeddor:
     def __init__(self):
         self.model = None
         self.openai_client = None
+        self.bm25 = None
 
     def cosine_similarity(self, a, b):
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     
-    def embed_using_sentence_transformer(self, text:str | list[str]) -> np.array:
+    def embed_using_sentence_transformer(self, text:str | list[str]) -> np.ndarray:
         if self.model is None:
             self.load_sentence_transformer()
         return self.model.encode(text)
 
-    def embed_using_openai(self, text:str | list[str], model="text-embedding-3-small") -> np.array:
+    def embed_using_openai(self, text:str | list[str], model="text-embedding-3-small") -> np.ndarray:
         if self.openai_client is None:
             self.load_openai_client()
         
@@ -32,6 +35,28 @@ class Embeddor:
         else:
             response = self.openai_client.embeddings.create(input = text, model=model)
             return np.array([ _.embedding for _ in response.data ])
+
+    def sparse_embed_using_bm25(self, text:str | list[str], is_query:bool=False) -> dict:
+        if self.bm25 is None:
+            self.bm25 = self.load_default_bm25_encoder()
+            
+        if is_query:
+            return self.bm25.encode_queries(text)
+        else:
+            return self.bm25.encode_documents(text)
+
+    def load_default_bm25_encoder(self) -> BM25Encoder:
+        logger.info("Loading default BM25 encoder")
+        """Create a BM25 model from pre-made params for the MS MARCO passages corpus"""
+        bm25 = BM25Encoder()
+        url = "https://storage.googleapis.com/pinecone-datasets-dev/bm25_params/msmarco_bm25_params_v4_0_0.json"
+        filepath = "msmarco_bm25_params_v4_0_0.json"
+        if not os.path.exists(filepath):
+            logger.info(f"Downloading BM25 params from {url}")
+            import wget
+            wget.download(url, filepath)
+        bm25.load(filepath)
+        return bm25
 
     def count_tokens(self, text:str, encoding:str="cl100k_base") -> int:
         # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
