@@ -60,7 +60,9 @@ pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2009/so
 pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2022/soccer_smallsize__2022__RoboTeam_Twente__0.pdf"
 pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/simulation/2d/2021/soccer_simulation_2d__2021__Alice2D__0.pdf"
 # Super weird spaces all over the place
-pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2012/soccer_smallsize__2012__RoboJackets__0.pdf"
+# pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2012/soccer_smallsize__2012__RoboJackets__0.pdf"
+# soccer_smallsize__2020__RoboTeam_Twente__0.pdf
+pdf_path = "/home/emiel/Desktop/projects/tdp/static/pdf/soccer/smallsize/2020/soccer_smallsize__2020__RoboTeam_Twente__0.pdf"
 
 results = {}
 
