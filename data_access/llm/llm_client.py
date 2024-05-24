@@ -54,8 +54,15 @@ class OpenAIClient(LLMClient):
         )
 
         response_text = response.choices[0].message.content.strip()
-        response_obj = json.loads(response_text)
-        return response_obj
+        response_text = response_text.replace("json```", "")
+        response_text = response_text.replace("```", "")
+
+
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode response from OpenAI: {response_text}")
+            return {}
 
 
 

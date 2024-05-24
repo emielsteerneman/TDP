@@ -122,7 +122,7 @@ class PineconeClient(ClientInterface):
             include_metadata=True
         )
 
-        print(response)
+        # print(response)
         return response
     
     def query_questions(self, dense_vector:np.ndarray, sparse_vector:dict, limit:int=10) -> list[ParagraphChunk]:
@@ -137,7 +137,7 @@ class PineconeClient(ClientInterface):
             include_metadata=True
         )
 
-        print(response)
+        # print(response)
         return response
 
     def reset_everything(self, embedding_size:int=1536) -> None:
