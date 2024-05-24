@@ -23,6 +23,7 @@ from embedding.Embeddings import instance as embeddor
 from extraction import extractor
 from MyLogger import logger
 
+
 PATH = "/home/emiel/Desktop/projects/tdp/static/pdf/"
 
 # weaviate_client = WeaviateClient.default_client()
@@ -31,13 +32,7 @@ PATH = "/home/emiel/Desktop/projects/tdp/static/pdf/"
 file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
 # metadata_client:MongoDBClient = MongoDBClient("mongodb://localhost:27017/")
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
-vector_client.delete_paragraphs()
-vector_client.delete_questions()
-
 llm_client = OpenAIClient()
-
-# metadata_client.drop_tdps()
-# metadata_client.drop_paragraphs()
 
 pdfs:list[TDPName] = file_client.list_pdfs()
 
@@ -55,9 +50,6 @@ n_exceptions = 0
 total_n_tokens = []
 n_max_paragraph_tokens = 0
 paper_max_paragraph_tokens = 0
-
-
-paragraphs = {}
 
 def reconstruct_paragraph_text(chunks:list[ParagraphChunk]) -> str:
     reconstructed_text = ""
@@ -126,6 +118,17 @@ n_chunks_stored = 0
 n_questions_specific_stored = 0
 n_questions_generic_stored = 0
 
+confirmation = input(f"Are you sure you want to process {len(pdfs)} PDFs? (y/n): ")
+if confirmation.lower() != "y":
+    print("Exiting")
+    exit()
+
+vector_client.delete_paragraphs()
+vector_client.delete_questions()
+
+# metadata_client.drop_tdps()
+# metadata_client.drop_paragraphs()
+
 for i_pdf, pdf in enumerate(pdfs):
     
     ### Load
@@ -183,14 +186,14 @@ for i_pdf, pdf in enumerate(pdfs):
 
                 if 'questions_specific' in response_obj:
                     for question in response_obj['questions_specific']:
-                        print(f"    S? {question}")
+                        # print(f"        S? {question}")
                         dense_embedding = embeddor.embed_using_openai(question, model="text-embedding-3-small")
                         sparse_embedding = embeddor.sparse_embed_using_bm25(question)
                         vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
                         n_questions_specific_stored += 1
                 if 'questions_generic' in response_obj:
                     for question in response_obj['questions_generic']:
-                        print(f"    G? {question}")
+                        # print(f"        G? {question}")
                         dense_embedding = embeddor.embed_using_openai(question, model="text-embedding-3-small")
                         sparse_embedding = embeddor.sparse_embed_using_bm25(question)
                         vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
