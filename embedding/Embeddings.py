@@ -45,6 +45,12 @@ class Embeddor:
         else:
             return self.bm25.encode_documents(text)
 
+    def preprocess_using_bm25(self, text:str) -> str:
+        if self.bm25 is None:
+            self.bm25 = self.load_default_bm25_encoder()
+
+        return " ".join(self.bm25._tokenizer(text))
+
     def load_default_bm25_encoder(self) -> BM25Encoder:
         logger.info("Loading default BM25 encoder")
         """Create a BM25 model from pre-made params for the MS MARCO passages corpus"""
