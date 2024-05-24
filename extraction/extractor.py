@@ -95,7 +95,12 @@ def bounding_boxes_overlap_y(span1: Span, span2: Span) -> float:
     if y2 < y3 or y4 < y1:
         return 0.0
     
-    return min(y2, y4) - max(y1, y3) / (y2 - y1 + y4 - y3)
+    overlap = min(y2, y4) - max(y1, y3)
+    total_height = max(y2, y4) - min(y1, y3)
+    
+    return overlap / total_height
+
+
 
 def printgroups(groups):
     for group in groups:
@@ -105,7 +110,7 @@ def printgroups(groups):
             print(f"{span['span']['bbox_absolute'][1]:.0f}", span['span']["text"])
             print("B" if span['is_bold'] else " ", "I" if span['is_italic'] else " ", "F" if span['is_weird_font'] else " ", "S" if span['is_larger_size'] else " ", "L" if span['is_left_aligned'] else " ", span["semver_level"] if 0 < span["semver_level"] else " ", "D" if span['has_spacing'] else " ", f"{span['span']['size']:.2f}", f"{span['distance_to_span_above']:.2f}")
 
-def find_paragraphs_using_bold(spans: list[Span]) -> tuple[list[Span], int, int]:
+def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
     """ Assumptions. Most paragraph titles
     * are bold or (less common) italic
     * start on the left of the page / column
@@ -329,8 +334,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
 
     ### Find all sentences that can make up a paragraph title
     logger.info("======== find_paragraph_headers ========")
-    # paragraph_span_groups, abstract_id, references_id = find_paragraph_headers(spans)
-    paragraph_spans, abstract_id, references_id = find_paragraphs_using_bold(spans)
+    paragraph_spans, abstract_id, references_id = find_paragraph_headers(spans)
 
     # Extend spans_id_mask with found paragraph titles, and abstract id and references id
     spans_id_mask += [ _['id'] for _ in paragraph_spans ]
@@ -463,7 +467,6 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
                                 and span["font"] == previous_span["font"]
                                 and span["flags"] == previous_span["flags"]
                                 and abs(span["size"] - previous_span["size"]) < 0.2
-                                # and span["size"] == previous_span["size"]
                             ):
                                 previous_span["text"] += " " + span["text"]
                                 previous_span["size"] = max(previous_span["size"], span["size"])
@@ -587,131 +590,6 @@ def match_image_with_spans(
     # logger.info(f"Found {len(spans)} spans for image with text '{description}'")
 
     return spans, figure_number
-
-
-def find_paragraph_headers(spans: list[Span]) -> tuple[list[list[Span]], int, int]:
-    """Find all paragraph headers in the document. The assumption is that all paragraph headers are bold and
-    start with a Semver. This is not always the case, but it is the case for most TDPs.
-
-    Args:
-        spans (list[Span]): A list of spans
-
-    Returns:
-        list[list[Span]]: A list of paragraph spans which are assumed to be paragraph headers
-        int: The id of the span that indicates the start of the abstract paragraph
-        int: The id of the span that indicates the start of the references paragraph
-    """
-
-    """ TODO also find the start of sub(sub(subsubssubbubsusbubsubs)) paragraphs that do not start with a semver
-    These are often
-    * Written in bold
-    * Have large spacing between above sentences
-    * Are on the left of the page (not to be confused with "fig" which are also bold, but might be in the middle of the page)
-
-      
-    """
-
-    logger.info(f"Finding paragraph headers for {len(spans)} spans")
-
-    abstract_id: int = -1
-    references_id: int = 999999  # Assuming there will be no more than 999999 spans in a TDP
-    
-    """
-    The following stages are used to find paragraph headers. If a stage does not find any paragraph headers, the next
-    stage is tried. The stages are as follows:
-    0. Find all bold spans
-    1. If there are no bold spans with valid semvers, try search for spans with font 'CMBX'
-    2. If there are also no CMBX spans with valid semvers, try all spans, excluding the most common font (which is most likely normal text)
-    """
-
-    # Extract all groups that start with a Semver
-    semver_groups: list[tuple[Semver, list[Span]]] = []
-    span_candidates: list[Span] = []
-    STAGE = 0
-
-    while True:
-        # Find all bold spans
-        if STAGE == 0:
-            span_candidates = [_ for _ in spans if _["bold"]]
-            logger.debug(f"Stage 0 : Found {len(span_candidates)} bold spans")
-
-        # If there are no bold spans with valid semvers, try search for spans with font 'CMBX'
-        if STAGE == 1:
-            span_candidates = [_ for _ in spans if _["font"].startswith("CMBX")]
-            logger.debug(f"Stage 1 : Found {len(span_candidates)} CMBX spans")
-
-        # If there are also no CMBX spans with valid semvers, try all spans, excluding the most common font (which is most likely normal text)
-        if STAGE == 2:
-            # Count font occurrences
-            font_occurrences = {}
-            for span in spans:
-                if span["font"] not in font_occurrences:
-                    font_occurrences[span["font"]] = 0
-                font_occurrences[span["font"]] += 1
-            # Sort by occurrences
-            font_occurrences = sorted(
-                [(k, v) for v, k in font_occurrences.items()], reverse=True
-            )
-            most_common_font = font_occurrences[0][1]
-
-            # Select all spans that are not the most common font
-            span_candidates = [_ for _ in spans if _["font"] != most_common_font]
-            logger.debug("Stage 2 : Found", len(span_candidates), "non-common-font spans")
-
-        # Group spans by y, fontsize, and page
-        span_groups: list[list[Span]] = groupby_y_fontsize_page(span_candidates)
-
-        # (Re)set abstract and references ids
-        abstract_id: int = -1
-        references_id: int = 999999  # Assuming there will be no more than 999999 spans in a TDP
-
-        for span_group in span_groups:
-            text = " ".join([_["text"] for _ in span_group])
-            # Find abstract and references while we're at it
-            if abstract_id == -1 and "abstract" in text.lower():
-                abstract_id = span_group[0]["id"]
-            if references_id == 999999 and "reference" in text.lower():
-                references_id = span_group[0]["id"]
-            # Find groups that begin with a Semver
-            possible_semver = text.split(" ")[0]
-            if Semver.is_semver(possible_semver):
-                semver_groups.append([Semver.parse(possible_semver), span_group])
-
-        if len(semver_groups):
-            logger.debug(f"Found {len(semver_groups)} semver groups in stage {STAGE}. Breaking gracefully")
-            break
-
-        if abstract_id != -1:
-            logger.debug(f"Found abstract at span {abstract_id}")
-        if references_id != 999999:
-            logger.debug(f"Found references at span {references_id}")
-        
-        STAGE += 1
-
-        if STAGE == 3: break
-
-    ############ Let's hope we found some semvers using one of the stages ############
-
-    if not len(semver_groups):
-        logger.info("No semver groups found. Breaking")
-        return [], abstract_id, references_id
-
-    # Set semver id to group id, to keep track
-    for i_group, span_group in enumerate(semver_groups):
-        span_group[0].id = i_group
-
-    logger.info(f"Found {len(semver_groups)} semver groups to work with after stages")
-
-    semvers = [_[0] for _ in semver_groups]
-    semvers = U.resolve_semvers(semvers)
-
-    paragraph_titles = [semver_groups[semver.id][1] for semver in semvers]
-
-    logger.debug(f"Found {len(paragraph_titles)} paragraph titles")
-    for title in paragraph_titles:
-        logger.debug(f"-- { ' '.join([_['text'] for _ in title]) }")
-
-    return paragraph_titles, abstract_id, references_id
 
 
 def find_pagenumbers(spans: list[Span]):
