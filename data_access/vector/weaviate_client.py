@@ -1,25 +1,35 @@
 # Third party libraries
 import numpy as np
 import pickle
-import weaviate
-import weaviate.client
-import weaviate.classes as wvc
-import weaviate.classes.config as wvcc
+from weaviate import WeaviateClient
+from weaviate.classes import config as wvc
+from weaviate.classes.config import Property, DataType
+from weaviate.connect import ConnectionParams
+
 # Local libraries
 from data_structures.Sentence import Sentence
 from data_structures.Paragraph import Paragraph
+from data_structures.ParagraphChunk import ParagraphChunk
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 
 from data_access.vector.client_interface import ClientInterface
 
-class WeaviateClient(ClientInterface):
+class MyWeaviateClient(ClientInterface):
 
-    COLLECTION_NAME_SENTENCE = "Sentence"
-    COLLECTION_NAME_PARAGRAPH = "Paragraph"
+    COLLECTION_NAME_PARAGRAPH = "paragraph"
+    COLLECTION_NAME_QUESTION = "question"
 
-    def __init__(self, client: weaviate.client.Client) -> None:
+    def __init__(self, client: WeaviateClient) -> None:
         self.client = client
+
+    """ Paragraph chunks """
+    
+    # def store_paragraph_chunk(self, chunk: ParagraphChunk, dense_vector:np.ndarray, sparse_vector:dict) -> None:
+    #     collection = self.client.
+    #     collection.    
+
+
 
     def store_sentence(self, sentence: Sentence) -> None:
         """Stores a sentence in the collection"""
@@ -107,75 +117,49 @@ class WeaviateClient(ClientInterface):
         # self.create_weaviate_schema_sentences(self.client, overwrite=True, headless=True)
         self.create_weaviate_schema_paragraphs(overwrite=True, headless=True)
 
-    def create_weaviate_schema_sentences(self, overwrite:bool=False, headless:bool=False):
-        cn = self.COLLECTION_NAME_SENTENCE
-        
-        if not overwrite and self.client.collections.exists(cn):
-            return self.client.collections.get(cn)
-        
-        if not headless:
-            answer = input(f"You are about to delete the current schema '{cn}' and create a new one. Are you sure? (y/n)")
-            if answer.lower() != "y":
-                return self.client.collections.get(cn)
-
-        # Delete the schema if it exists
-        self.client.collections.delete(cn)
-        logger.info(f"Deleted the schema '{cn}'")
-
-        # Create the schema
-        # https://weaviate.io/developers/weaviate/manage-data/collections
-        collection = self.client.collections.create(
-            name=cn,
-            description="A sentence",
-            vector_index_config=wvc.config.Configure.VectorIndex.flat(
-                distance_metric=wvc.config.VectorDistances.COSINE,
-            ),
-            properties=[
-                wvcc.Property(name="team", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="year", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="league", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="index", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="text", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=True),
-            ]
-        )
-        logger.info(f"Created the schema '{cn}'")
-
-        return collection
-
-    def create_weaviate_schema_paragraphs(self, overwrite:bool=False, headless:bool=False):
+    def create_collection_paragraphs(self, overwrite:bool=False, headless:bool=False):
         cn = self.COLLECTION_NAME_PARAGRAPH
         
         if not overwrite and self.client.collections.exists(cn):
             return self.client.collections.get(cn)
         
         if not headless:
-            answer = input(f"You are about to delete the current schema '{cn}' and create a new one. Are you sure? (y/n)")
+            answer = input(f"You are about to delete the current collection '{cn}' and create a new one. Are you sure? (y/n)")
             if answer.lower() != "y":
                 return self.client.collections.get(cn)
 
-        # Delete the schema if it exists
+        # Delete the collection if it exists
         self.client.collections.delete(cn)
-        logger.info(f"Deleted the schema '{cn}'")
+        logger.info(f"Deleted the collection '{cn}'")
 
-        # Create the schema
+        # Create the collection
         # https://weaviate.io/developers/weaviate/manage-data/collections
         collection = self.client.collections.create(
             name=cn,
-            description="A paragraph",
-            vector_index_config=wvc.config.Configure.VectorIndex.flat(
-                distance_metric=wvc.config.VectorDistances.COSINE,
+            description="A paragraph chunk",
+            vector_index_config=wvc.Configure.VectorIndex.flat(
+                distance_metric=wvc.VectorDistances.L2_SQUARED,
             ),
             properties=[
-                wvcc.Property(name="team", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="year", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="league", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="index", data_type=wvcc.DataType.INT, index_filterable=True, index_searchable=False),
-                wvcc.Property(name="text", data_type=wvcc.DataType.TEXT, index_filterable=True, index_searchable=True),
+                Property(name="team",   data_type=DataType.TEXT, index_filterable=True, index_searchable=False),
+                Property(name="year",   data_type=DataType.INT,  index_filterable=True, index_searchable=False),
+                Property(name="league", data_type=DataType.TEXT, index_filterable=True, index_searchable=False),
+                Property(name="index",  data_type=DataType.INT,  index_filterable=True, index_searchable=False),
+                Property(name="text",   data_type=DataType.TEXT, index_filterable=True, index_searchable=True),
             ]
         )
         logger.info(f"Created the schema '{cn}'")
-
+        collection.query.hybrid
         return collection
+
+    def delete_paragraphs(self) -> None:
+        logger.info(f"Deleting all objects from collection '{self.COLLECTION_NAME_PARAGRAPH}'")
+        # https://weaviate.io/developers/weaviate/manage-data/delete
+        # the number of objects that can be deleted in a single query is limited (default 10,000)
+        collection = self.client.collections.get(self.COLLECTION_NAME_PARAGRAPH)
+        while 0 < collection.aggregate.over_all(total_count=True).total_count:
+            logger.info("  Deleting up to 10,000 objects..")
+            collection.data.delete_many()
 
     def print_statistics(self) -> None:
         collection = self.client.collections.get("Sentence")
@@ -183,13 +167,18 @@ class WeaviateClient(ClientInterface):
         logger.info(f"Collection 'Sentence' has {count} objects")
 
     @staticmethod
-    def default_client() -> "WeaviateClient":
-        client = weaviate.connect_to_custom(
-            http_host="localhost",
-            http_port=8081,
-            http_secure=False,
-            grpc_host="localhost",
-            grpc_port=50051,
-            grpc_secure=False,
+    def default_client() -> WeaviateClient:
+        client = WeaviateClient(
+            connection_params=ConnectionParams.from_params(
+                http_host="localhost",
+                http_port=8081,
+                http_secure=False,
+                grpc_host="localhost",
+                grpc_port=50051,
+                grpc_secure=False,
+            )
         )
-        return WeaviateClient(client)
+
+        client.connect()
+
+        return MyWeaviateClient(client)

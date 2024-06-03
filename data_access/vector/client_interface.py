@@ -10,28 +10,8 @@ from data_structures.Paragraph import Paragraph
 class ClientInterface(ABC):
     """Abstract class that holds the data access interface for the client"""
 
-    @abstractmethod
-    def store_sentence(self, sentence: Sentence, collection: str) -> None:
-        """Stores a sentence in the collection"""
-        raise NotImplementedError
-    
     # @abstractmethod
-    # def load_sentences(self, collection: str, query: str) -> list[Sentence]:
-    #     """Loads sentences from the collection"""
+    # def reset_everything(self) -> None:
+    #     """Resets the client"""
     #     raise NotImplementedError
-    
-    @abstractmethod
-    def store_paragraph(self, paragraph: Paragraph, collection: str) -> None:
-        """Stores a paragraph in the collection"""
-        raise NotImplementedError
-    
-    # @abstractmethod
-    # def load_paragraphs(self, collection: str, query: str) -> list[Paragraph]:
-    #     """Loads paragraphs from the collection"""
-    #     raise NotImplementedError
-
-    @abstractmethod
-    def reset_everything(self) -> None:
-        """Resets the client"""
-        raise NotImplementedError
         
