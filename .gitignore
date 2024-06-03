@@ -12,3 +12,4 @@ static
 logs
 tmp
 weaviate_data
+milvus/volumes
