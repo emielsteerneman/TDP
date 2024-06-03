@@ -125,10 +125,10 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
     most_common_font = Counter([ span['font'] for span in spans ]).most_common(1)[0][0]
     most_common_line_height = Counter([ span['bbox'][3] - span['bbox'][1] for span in spans ]).most_common(1)[0][0]
 
-    logger.info(f"Left aligned x coordinate is {x_left_aligned}")
-    logger.info(f"Most common font size is {most_common_fontsize}")
-    logger.info(f"Most common font is {most_common_font}")
-    logger.info(f"Most common line height is {most_common_line_height}")
+    # logger.info(f"Left aligned x coordinate is {x_left_aligned}")
+    # logger.info(f"Most common font size is {most_common_fontsize}")
+    # logger.info(f"Most common font is {most_common_font}")
+    # logger.info(f"Most common line height is {most_common_line_height}")
 
     # print(Counter([ span['font'] for span in spans ]).most_common(999))
     # print(Counter([ span['bbox'][0] for span in spans ]).most_common(999))
@@ -211,10 +211,10 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
     for span in spans_selected:
         if span_abstract is None and "abstract" in span['span']['text'].lower():
             span_abstract = span['span']
-            logger.info(f"Found abstract at span y={span_abstract['bbox_absolute'][1]}")
+            # logger.info(f"Found abstract at span y={span_abstract['bbox_absolute'][1]}")
         if span_reference is None and "reference" in span['span']['text'].lower():
             span_reference = span['span']
-            logger.info(f"Found references at span y={span_reference['bbox_absolute'][1]}")
+            # logger.info(f"Found references at span y={span_reference['bbox_absolute'][1]}")
 
     # Remove all selected spans above abstract or below reference
     if span_abstract is not None:
@@ -261,8 +261,6 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
             for patch in patch_group:
                 semver_group3 = semver_group2[:] + [ _['span'] for _ in patch ]
                 possible_semver_groups.append(semver_group3)
-
-    print(f"N POSSIBLE GROUPS: {len(possible_semver_groups)}")
 
     longest_chain = []
 
@@ -413,7 +411,7 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
         tuple[list[Span], list[Image]]: A tuple containing a list of spans and a list of images
     """
 
-    logger.info("Extracting images and spans")
+    # logger.info("Extracting images and spans")
 
     factory_id = 0
     spans, images = [], []
@@ -481,7 +479,8 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
         
         current_page_height += page.rect.height
 
-    logger.info(f"Extracted {len(spans)} spans and {len(images)} images")
+    # logger.info(f"Extracted {len(spans)} spans and {len(images)} images")
+
     return spans, images
 
 
