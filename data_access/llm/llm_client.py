@@ -23,10 +23,24 @@ class LLMClient(ABC):
         pass
 
 class OpenAIClient(LLMClient):
+
+    # Costs per token
+    api_costs = {
+        "gpt-3.5-turbo-0125": {
+            "input": 0.50 / 1e6,
+            "output": 1.50 / 1e6
+        },
+        "gpt-4o": {
+            "input": 5.00 / 1e6,
+            "output": 15.00 / 1e6
+        }
+    }
+
     def __init__(self):
         self.client = OpenAI()
+        self.total_costs = 0
 
-    def generate_paragraph_chunk_information(self, chunk:ParagraphChunk, n_questions:int=3) -> dict:
+    def generate_paragraph_chunk_information(self, chunk:ParagraphChunk, n_questions:int=3, model="gpt-3.5-turbo-0125") -> dict:
         """
         Generate information about a paragraph using OpenAI's LLM.
         """
@@ -46,17 +60,19 @@ class OpenAIClient(LLMClient):
         )
 
         response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
+            model=model,
             messages=[{
                 'role': 'user',
                 'content': prompt
             }]
         )
 
-        response_text = response.choices[0].message.content.strip()
-        response_text = response_text.replace("json```", "")
-        response_text = response_text.replace("```", "")
+        self.total_costs += response.usage.prompt_tokens * self.api_costs[response.model]["input"]
+        self.total_costs += response.usage.completion_tokens * self.api_costs[response.model]["output"]
 
+        response_text = response.choices[0].message.content.strip()
+        if response_text.startswith("json"): response_text = response_text[4:]
+        response_text = response_text.replace("```", "")
 
         try:
             return json.loads(response_text)
