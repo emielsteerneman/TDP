@@ -12,8 +12,9 @@ from data_access.vector.pinecone_client import PineconeClient
 from data_structures.TDPName import TDPName
 from embedding.Embeddings import instance as embeddor
 
-
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
+
+print(f"Paragraphs: {vector_client.count_paragraphs()}    Questions: {vector_client.count_questions()}")
 
 while True:
     print("\n\n")
@@ -21,8 +22,8 @@ while True:
     if query == "":
         continue
 
-    dense_vector = embeddor.embed_using_openai(query)
-    sparse_vector = embeddor.sparse_embed_using_bm25(query, is_query=True)
+    dense_vector = embeddor.embed_dense_openai(query)
+    sparse_vector = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
 
     response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=3)
     response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=15)

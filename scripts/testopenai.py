@@ -43,7 +43,7 @@ sentences = [ s.text_raw for s in tdp.get_sentences()[:5] ]
 embedding = embed_instance.embed_using_sentence_transformer(sentences)
 print(embedding[:, :3])
 print()
-embedding = embed_instance.embed_using_openai(sentences)
+embedding = embed_instance.embed_dense_openai(sentences)
 print(embedding[:, :3])
 
 

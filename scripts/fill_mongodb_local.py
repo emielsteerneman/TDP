@@ -24,6 +24,15 @@ from extraction import extractor
 from MyLogger import logger
 
 
+
+sem1 = embeddor.embed_sparse_milvus_splade("This is a test test2 bangbang")
+sem2 = embeddor.embed_sparse_pinecone_bm25("This is a test test2 bangbang")
+
+print(type(sem1), "\n", sem1)
+print(type(sem2), "\n", sem2)
+
+exit()
+
 PATH = "/home/emiel/Desktop/projects/tdp/static/pdf/"
 
 # weaviate_client = WeaviateClient.default_client()
@@ -40,9 +49,10 @@ pdfs:list[TDPName] = file_client.list_pdfs()
 pdfs = [ _ for _ in pdfs if "rescue_robot" not in _.filename.lower() ]
 pdfs = [ _ for _ in pdfs if "soccer_smallsize" in _.filename.lower() ]
 # pdfs = [ _ for _ in pdfs if "RoboTeam_Twente" in _.filename ]
+# pdfs = [ _ for _ in pdfs if "soccer_smallsize__2010__ODENS__0" in _.filename ]
 
 # now pick a random subset of the pdfs
-pdfs = np.random.choice(pdfs, 10, replace=False)
+# pdfs = np.random.choice(pdfs, 10, replace=False)
 
 print(f"Found {len(pdfs)} PDFs")
 
@@ -58,8 +68,11 @@ def reconstruct_paragraph_text(chunks:list[ParagraphChunk]) -> str:
     for chunk, (start, stop) in zip(chunks, start_pairs):
         length = stop - start
         reconstructed_text += chunk.text[:length]
+        # print(f"    '{chunk.text[:20]}' ... '{chunk.text[-20:]}'")
+        # print(f" -> '{reconstructed_text[:20]}' ... '{reconstructed_text[-20:]}'")
+
     reconstructed_text += chunks[-1].text
-    return reconstructed_text
+    return reconstructed_text.strip()
 
 def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n_chars_overlap:int = 500) -> list[ParagraphChunk]:
     """ Function to split a paragraph into chunks of approximately n_chars_per_group characters, with an overlap of n_chars_overlap characters between
@@ -81,53 +94,67 @@ def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n
     cumsum = np.cumsum(lengths)
     step = n_chars_per_group - n_chars_overlap
 
-    start_prev = -1
+    start_prev, end_prev = -1, 999999
 
     for char_offset in range(0, total_length, step):
         # Find the first sentence that starts after the offset
         i_start = np.argmin(cumsum < char_offset)
         # Find the first sentence that ends after the offset + n_chars_per_group
         i_end = np.argmax(char_offset + n_chars_per_group <= cumsum)
+
         # If no sentence ends after the offset + n_chars_per_group, take all sentences from i_start
         if i_end == 0: i_end = len(sentences)
+        # Ensure that no sentence is skipped
+        if end_prev < i_start: i_start = end_prev
         # Ensure that no two chunks start at the same sentence, thus avoiding duplicate chunks
-        if start_prev == i_start: continue
+        if i_start <= start_prev: i_start = start_prev + 1
+        # Ensure that the start and end are not the same
+        if i_start == i_end: continue
+        
         start_prev = i_start
+        end_prev = i_end
 
         # Create and store chunk
         chunk_start = int(cumsum[i_start] - lengths[i_start])
         chunk_end = int(cumsum[i_end-1])
-        chunk_text = " ".join(sentences[i_start:i_end])
+        chunk_text = " ".join(sentences[i_start:i_end]) + " "
         chunks.append(ParagraphChunk(paragraph, chunk_text, len(chunks), chunk_start, chunk_end))
         
-        # print(f"Added chunk {len(chunks):2} with {len(chunk_text):4} characters, from sentence {i_start} to {i_end} ({cumsum[i_start]-lengths[i_start]} to {cumsum[i_end-1]})")
+        # print(f"Added chunk {len(chunks):2} with {len(chunk_text):4} characters, from sentence {i_start} to {i_end-1} ({cumsum[i_start]-lengths[i_start]} to {cumsum[i_end-1]}). '{chunk_text[:20]}' ... '{chunk_text[-20:]}'") 
+
+        # If the last chunk is less than 33% of the desired length, merge it with the previous chunk
+        if 1 < len(chunks) and len(chunks[-1].text) < n_chars_per_group * 0.33:
+            # print(f"Merging last chunk with previous chunk")
+            chunks[-2].text = chunks[-2].text[:chunks[-1].start-chunks[-2].start] + chunks[-1].text
+            chunks[-2].end = chunks[-1].end
+            chunks = chunks[:-1]
 
         # If the last sentence is included in this chunk, break. Any other chunks would just be a subset of this last chunk
         if i_end == len(sentences): break
-        
-    # If the last chunk is less than 33% of the desired length, merge it with the previous chunk
-    if 1 < len(chunks) and len(chunks[-1].text) < n_chars_per_group * 0.33:
-        chunks[-2].text = chunks[-2].text[:chunks[-1].start-chunks[-2].start] + chunks[-1].text
-        chunks[-2].end = chunks[-1].end
-        chunks = chunks[:-1]
+
 
     return chunks
-
 
 n_chunks_stored = 0
 n_questions_specific_stored = 0
 n_questions_generic_stored = 0
 
-confirmation = input(f"Are you sure you want to process {len(pdfs)} PDFs? (y/n): ")
-if confirmation.lower() != "y":
-    print("Exiting")
-    exit()
+print(f"Paragraphs: {vector_client.count_paragraphs()}    Questions: {vector_client.count_questions()}")
+if vector_client.count_paragraphs() > 0 or vector_client.count_questions() > 0:
+    confirmation = input(f"Are you sure you want to process {len(pdfs)} PDFs? (y/n): ")
+    if confirmation.lower() != "y":
+        print("Exiting")
+        exit()
 
-vector_client.delete_paragraphs()
-vector_client.delete_questions()
+# vector_client.delete_paragraphs()
+# vector_client.delete_questions()
 
 # metadata_client.drop_tdps()
 # metadata_client.drop_paragraphs()
+
+ef = milvus_model.DefaultEmbeddingFunction()
+print(ef)
+exit()
 
 for i_pdf, pdf in enumerate(pdfs):
     
@@ -150,6 +177,7 @@ for i_pdf, pdf in enumerate(pdfs):
 
     ### Process each paragraph
     for paragraph in tdp.structure.paragraphs:
+
         n_tokens = embeddor.count_tokens(paragraph.content_raw())
         n_chars = len(paragraph.content_raw())
 
@@ -159,18 +187,22 @@ for i_pdf, pdf in enumerate(pdfs):
 
         paragraph_chunks:list[ParagraphChunk] = create_paragraph_chunks(paragraph, n_chars_per_group=2000, n_chars_overlap=500)
 
-        print(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars    {len(paragraph_chunks):2} chunks   {n_chars/n_tokens:.2f} chars/token")
-
+        print(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars    {len(paragraph_chunks):2} chunks   {n_chars/n_tokens:.2f} chars/token", [ len(_.text) for _ in paragraph_chunks ])
 
         # Reconstruct the paragraph from the chunks
         reconstructed_text = reconstruct_paragraph_text(paragraph_chunks)
         if paragraph.content_raw() != reconstructed_text:
-            print("!!!!!!!!!!\n\n")
+            print("!!!!!!!!!!\nParagraph content raw\n")
             print(paragraph.content_raw())
-            print("\n\n")
+            print("\nreconstructed text\n")
             print(reconstructed_text)
             print("\n\n")
             raise Exception("Reconstruction failed")
+
+        for i_chunk, chunk in enumerate(paragraph_chunks):
+            pass
+
+        continue
 
         for i_chunk, chunk in enumerate(paragraph_chunks):
             dense_embedding = embeddor.embed_using_openai(chunk.text, model="text-embedding-3-small")
@@ -199,7 +231,7 @@ for i_pdf, pdf in enumerate(pdfs):
                         vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
                         n_questions_generic_stored += 1
 
-
+    print(f"Current costs: {embeddor.total_costs + llm_client.total_costs:.2f} (Embeddings: {embeddor.total_costs:.2f}  LLM: {llm_client.total_costs:.2f})")
 
         ### Statistics
         
