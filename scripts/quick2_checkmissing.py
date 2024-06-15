@@ -3,10 +3,47 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import hashlib
-import utilities as U
 import json
 import base64
 import subprocess
+# Third party libraries
+from dotenv import load_dotenv
+load_dotenv()
+# Local libraries
+from data_access.file.file_client import LocalFileClient, AzureFileClient
+from data_structures.TDPName import TDPName
+
+local_file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
+azure_file_client:AzureFileClient = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
+
+afn, ahash = zip(*map(lambda f: [f['name'], base64.b64encode(f['content_settings']['content_md5']).decode('ASCII')], azure_file_client.list_pdfs()))
+amap = dict(zip(ahash, afn))
+lfn, lhash = zip(*map(lambda f: [f.filename, local_file_client.get_pdf_hash(f)], local_file_client.list_pdfs()))
+lmap = dict(zip(lhash, lfn))
+
+tdp_names = [TDPName.from_filepath(fn) for fn in lfn]
+team_names = set([tdp_name.team_name.name for tdp_name in tdp_names])
+team_names = sorted(list(team_names))
+print("Team names:")
+print("\n".join(team_names))
+
+exit()
+
+print(f"Number of files in Azure: {len(ahash)}")
+print(f"Number of files on local: {len(lhash)}")
+print()
+
+a_missing = [lmap[lhash] for lhash in lhash if lhash not in ahash]
+l_missing = [amap[ahash] for ahash in ahash if ahash not in lhash]
+
+print(f"Number of files missing in Azure: {len(a_missing)}")
+print(f"Number of files missing on local: {len(l_missing)}")
+print()
+
+print( "\n".join( a_missing ) )
+
+exit()
+
 
 def get_hashes_from_azure():
     print("Getting hashes from Azure...")
