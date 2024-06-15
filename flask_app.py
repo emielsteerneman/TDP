@@ -14,12 +14,14 @@ import app
 import startup
 from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import FileClient
+from data_access.vector.pinecone_client import PineconeClient
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 
 flask_app = Flask(__name__, template_folder='webapp/templates', static_url_path='/static', static_folder='webapp/static')
 
 metadata_client, file_client = startup.get_clients()
+vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 
 @flask_app.before_request
 def before_request():
@@ -84,7 +86,24 @@ def api_tdp_html(tdp_name:str):
 def api_tdp_image(tdp_name:str, image_idx:int):
     pass
 
+@flask_app.route("/api/query")
+def api_query():
+    from search import search
+    # Get query from URL
+    query = request.args.get('query')
+    print(query)
 
+    paragraphs = search(vector_client, query)
+
+    paragraphs_json = []
+    for paragraph in paragraphs:
+        paragraphs_json.append({
+            'tdp_name': paragraph.tdp_name.to_dict(),
+            'title': paragraph.text_raw,
+            'content': paragraph.content_raw(),
+        })
+
+    return paragraphs_json
 
 # @flask_app.route('/TDPs/<year>/<filename>')
 # def download_file(year, filename):

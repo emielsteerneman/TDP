@@ -6,6 +6,7 @@ numpy
 openai
 pinecone-client
 pinecone-text
+pymilvus
 pymongo
 PyMuPDF
 python-telegram-bot

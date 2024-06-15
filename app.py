@@ -51,3 +51,4 @@ def api_tdps() -> str:
     response = { 'tdps': tdps_new, 'league_map': league_map, 'teamname_map': teamname_map }
     
     return json.dumps(response)
+
