@@ -4,8 +4,8 @@ import os
 import numpy as np
 from openai import OpenAI
 from pinecone_text.sparse import BM25Encoder
-import pymilvus
-import pymilvus.model
+# import pymilvus
+# import pymilvus.model
 from scipy.sparse import csr_matrix, coo_array
 import tiktoken
 # Local libraries

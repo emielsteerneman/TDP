@@ -1,13 +1,20 @@
+# System libraries
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Third party libraries
 import numpy as np
 import re
 
 import nltk
-nltk.download('stopwords')
-nltk.download('wordnet')
+# nltk.download('stopwords')
+# nltk.download('wordnet')
 from nltk.corpus import stopwords
 STOPWORDS_ENGLISH = stopwords.words('english')
 from nltk.stem import WordNetLemmatizer
 lemmatizer = WordNetLemmatizer()
+# Local libraries
+from data_structures.ParagraphChunk import ParagraphChunk
 
 def split_text_into_sentences(text:str) -> list[str]:
     ### Split into spans
@@ -65,3 +72,17 @@ def process_raw_spans(spans:list[str]) -> list[list[str], list[str]]:
         sentences_processed = [ process_text_for_keyword_search(_) for _ in sentences_raw ]
         
         return sentences_raw, sentences_processed
+
+
+def reconstruct_paragraph_text(chunks:list[ParagraphChunk]) -> str:
+    reconstructed_text = ""
+    starts = [ _.start for _ in chunks ]
+    start_pairs = list(zip(starts, starts[1:]))
+    for chunk, (start, stop) in zip(chunks, start_pairs):
+        length = stop - start
+        reconstructed_text += chunk.text[:length]
+        # print(f"    '{chunk.text[:20]}' ... '{chunk.text[-20:]}'")
+        # print(f" -> '{reconstructed_text[:20]}' ... '{reconstructed_text[-20:]}'")
+
+    reconstructed_text += chunks[-1].text
+    return reconstructed_text.strip()

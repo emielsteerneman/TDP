@@ -8,7 +8,8 @@ class Paragraph:
 	""" Class that represents a paragraph in the database """
 	def __init__(
      	self, id:int=None, tdp_name:TDPName=None, sequence_id:int=None,
-		text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None
+		text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None,
+		questions:list[str]=None
   	) -> None:
 		self.id = id
 		self.tdp_name = tdp_name
@@ -16,6 +17,7 @@ class Paragraph:
 		self.text_raw = text_raw
 		self.text_processed = text_processed
 		self.embedding = embedding
+		self.questions = questions
 		
 		self.sentences:list[Sentence] = []
 		self.images:list[Image] = []

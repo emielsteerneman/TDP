@@ -3,13 +3,20 @@ from .League import League
 from .TeamName import TeamName
 from .TDPName import TDPName
 from .TDPStructure import TDPStructure
+from .ProcessStateEnum import ProcessStateEnum
+from uniqid import uniqid
 
 class TDP:
-    def __init__(self, tdp_name:TDPName, id: int=None, filehash:str=None, structure:TDPStructure=None):
+    def __init__(self, tdp_name:TDPName, id: int=None, filehash:str=None, structure:TDPStructure=None, process_state:ProcessStateEnum=ProcessStateEnum.PENDING):
         self.tdp_name:TDPName = tdp_name
         self.id:int = id
         self.filehash:str = filehash
         self.structure:TDPStructure = structure
+        self.state = {
+            "run_id": uniqid,
+            "process_state": process_state,
+            "error": None
+        }
 
     def propagate_information(self):
         # Propagate tdp_name to all paragraphs and sentences

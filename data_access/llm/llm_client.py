@@ -33,6 +33,10 @@ class OpenAIClient(LLMClient):
         "gpt-4o": {
             "input": 5.00 / 1e6,
             "output": 15.00 / 1e6
+        },
+        "gpt-4o-2024-05-13": {
+            "input": 5.00 / 1e6,
+            "output": 15.00 / 1e6
         }
     }
 
@@ -71,8 +75,10 @@ class OpenAIClient(LLMClient):
         self.total_costs += response.usage.completion_tokens * self.api_costs[response.model]["output"]
 
         response_text = response.choices[0].message.content.strip()
-        if response_text.startswith("json"): response_text = response_text[4:]
-        response_text = response_text.replace("```", "")
+        # if response_text.startswith("json"): response_text = response_text[4:]
+        # response_text = response_text.replace("```", "")
+        # Trim from first '{' to last '}'
+        response_text = response_text[response_text.find("{"):response_text.rfind("}")+1]
 
         try:
             return json.loads(response_text)
@@ -80,7 +86,51 @@ class OpenAIClient(LLMClient):
             logger.error(f"Failed to decode response from OpenAI: {response_text}")
             return {}
 
+    def answer_question(self, question:str, source_text:str, model="gpt-3.5-turbo-0125") -> str:
+        """
+        Ask a question about a source text using OpenAI's LLM.
+        """
+        system_role = f"You are a helpful and knowledgeable assistant. You will be asked a question from a participant in "
+        f"the Robocup. The RoboCup is an international scientific initiative with the goal to advance the state of the art of intelligent robots. "
+        f"Every year, teams from all over the world compete in various robot leagues and robot soccer matches. The Robocup is all about "
+        f"sharing knowledge, collaboration, and friendly competition. You are a helpful and knowledgeable assistant. "
+        f"You will be given a question and a list of paragraphs. Answer the question based on the information in the paragraphs. "
+        f"Always cite the team and year and number of the source paragraph for every piece of information you provide. "
+        f"Your answer should be concise and to the point. If you don't know the answer, you can say 'I don't know'."
+        f"The answer should encourage the participant to do its own research. Maybe ask a question back to the participant or suggest follow-up research. "
+        f"Again, it is absolutely important to always cite the source of your information. Always provide the paragraph title."
 
+        messages = [
+            {
+                'role': 'system',
+                'content': system_role
+            },
+            {
+                'role': 'user',
+                'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data): " + question
+            },
+            {
+                'role': 'user',
+                'content': source_text
+            }
+        ]
+
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+
+        if response.model in self.api_costs:
+            cost_input = response.usage.prompt_tokens * self.api_costs[response.model]["input"]
+            cost_output = response.usage.completion_tokens * self.api_costs[response.model]["output"]
+            self.total_costs += cost_input + cost_output
+            logger.info(f"tokens in: {response.usage.prompt_tokens}, tokens out: {response.usage.completion_tokens}, cost in: {cost_input}, cost out: {cost_output}")
+        else:
+            logger.error(f"Model {response.model} not found in API costs")
+
+        # print(response)
+
+        return response.choices[0].message.content.strip()
 
 
 def main():

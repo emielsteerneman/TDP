@@ -13,6 +13,7 @@ from pymongo.mongo_client import MongoClient
 from data_structures.TDP import TDP
 from data_structures.TDPName import TDPName
 from data_structures.Paragraph import Paragraph   
+from data_structures.ProcessStateEnum import ProcessStateEnum
 from MyLogger import logger
 
 class MetadataTDPClient(ABC):
@@ -75,7 +76,6 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
         db:pymongo.database.Database = self.client.get_database("metadata")
         col:pymongo.collection.Collection = db.get_collection("tdp")
         n_tdps = col.count_documents({})
-        print(f"Number of TDPs: {n_tdps}")
         return n_tdps
     
     def insert_tdp(self, tdp:TDP):
@@ -85,7 +85,13 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
             "league": tdp.tdp_name.league.name,
             "index": tdp.tdp_name.index,
             "filename": tdp.tdp_name.filename,
-            "filehash": tdp.filehash
+            "filehash": tdp.filehash,
+            # I don't like that I can't straight out copy the state object but bson can't convert enums to strings implicitly
+            "state": {
+                "run_id": tdp.state["run_id"],
+                "process_state": ProcessStateEnum.to_string(tdp.state["process_state"]),
+                "error": tdp.state["error"]
+            }
         }
 
         logger.info(f"Inserting TDP {tdp.tdp_name}")
@@ -100,6 +106,14 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
 
         idx = col.insert_one(tdp_dict)
         logger.info(f"Inserted TDP {tdp.tdp_name} with id {idx.inserted_id}")
+
+    def update_tdp_process_state(self, tdp_name:TDPName, process_state:str, error:str=None):
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("tdp")
+        col.update_one(
+            { "team": tdp_name.team_name.name, "year": tdp_name.year, "league": tdp_name.league.name, "index": tdp_name.index },
+            { "$set": { "state.process_state": ProcessStateEnum.to_string(process_state), "state.error": error } }
+        )
 
     def find_tdps(self, 
             team:str|list[str]=None, 
@@ -137,6 +151,24 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
         return [ 
             TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"])) 
             for tdp in tdp_cursor ]
+
+    def find_tdp_by_name(self, tdp_name:TDPName) -> TDP:
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("tdp")
+        tdp = col.find_one({ "team": tdp_name.team_name.name, "year": tdp_name.year, "league": tdp_name.league.name, "index": tdp_name.index })
+        if tdp is None: return None
+        tdp_obj = TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"]))
+        tdp_obj.state = {
+            "run_id": tdp["state"]["run_id"],
+            "process_state": ProcessStateEnum.from_string(tdp["state"]["process_state"]),
+            "error": tdp["state"]["error"]
+        }
+        return tdp_obj
+
+    def delete_tdp_by_name(self, tdp_name:TDPName):
+        db:pymongo.database.Database = self.client.get_database("metadata")
+        col:pymongo.collection.Collection = db.get_collection("tdp")
+        col.delete_one({ "team": tdp_name.team_name.name, "year": tdp_name.year, "league": tdp_name.league.name, "index": tdp_name.index })
 
     def drop_tdps(self):
         db:pymongo.database.Database = self.client.get_database("metadata")
@@ -292,7 +324,7 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
 
 if __name__ == "__main__":
     
-    from custom_dotenv import load_dotenv
+    from dotenv import load_dotenv
     load_dotenv()
 
     print(os.getenv("MONGODB_CONNECTION_STRING"))
