@@ -20,7 +20,18 @@ from text_processing.text_processing import reconstruct_paragraph_text
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 llm_client = OpenAIClient()
 
-def search(vector_client, query:str, filter={}) -> list[Paragraph]:
+def summarize_by_sentence(text:str, keywords:list[str]) -> str:
+    keywords = [ _.lower() for _ in keywords ]
+    sentences = text.split(".")
+    sentences = [ _.strip() for _ in sentences if any([k in _ for k in keywords]) ]
+    summary = " ... ".join(sentences)
+
+    if not len(summary):
+        return text
+    
+    return summary
+
+def search(vector_client:PineconeClient, query:str, filter={}, compress_text=False) -> list[Paragraph]:
     if query == "": return []
 
     filter={
@@ -29,18 +40,53 @@ def search(vector_client, query:str, filter={}) -> list[Paragraph]:
     }
 
     dense_vector = embeddor.embed_dense_openai(query)
-    sparse_vector = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
+    sparse_vector, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
+    print(keywords)
+    keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
 
     # Get paragraphs and questions from vector database
-    response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=5, filter=filter)
-    response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=10, filter=filter)
+    response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=15, filter=filter)
+    response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=30, filter=filter)
 
-    # print("================ PARAGRAPH CHUNKS ================")
-    paragraph_chunk_matches = response_paragraph_chunks['matches'] # [ id, metadata, score, values ]
-    vector_ids = [match['id'] for match in paragraph_chunk_matches]
-    paragraph_chunk_questions = vector_client.get_questions_metadata_by_id(vector_ids) # [ metadata ]
+
+    """ Paragraph metadata:
+    
+    tdp_name: "soccer_smallsize__2016__Parsian__0"
+    paragraph_sequence_id: 13
+    chunk_sequence_id: 0
+    league: "soccer_smallsize"
+    year: 2016
+    team: "Parsian"
+    paragraph_title: "5.1. Architecture"
+    run_id: "7fc22e94-b9ae-4f57-a647-1f4096696e43"
+    
+    start: 0
+    end: 181
+    text: "This year the software architecture has some minor changes that will be discussed in the next part. Here is The Parisan Software architecture chart (Fig.10). Fig.10. Software chart "
+
+    """
+
+    """ Question metadata:
+    tdp_name: "soccer_smallsize__2013__Stanford_Robotics_Club__0"
+    paragraph_sequence_id: 6
+    chunk_sequence_id: 2
+    league: "soccer_smallsize"
+    year: 2013
+    team: "Stanford_Robotics_Club"
+    paragraph_title: "2.5 Kicker"
+    
+    question: "What are some factors to consider when choosing between an ironless or slotless steel forcer?"
+    """
 
     paragraphs = {}
+
+    # print("================ PARAGRAPH CHUNKS ================")
+    # Get paragraph chunks
+    paragraph_chunk_matches = response_paragraph_chunks['matches'] # [ id, metadata, score, values ]
+    # Get the questions that are associated with the paragraph chunks
+    vector_ids = [match['id'] for match in paragraph_chunk_matches]
+    paragraph_chunk_questions = vector_client.get_questions_metadata_by_id(vector_ids) # [ metadata ]
+    
     for i_match, match in enumerate(paragraph_chunk_matches):
         metadata = match['metadata']
         paragraph_id = f"{metadata['tdp_name']}__{int(metadata['paragraph_sequence_id'])}"
@@ -57,7 +103,9 @@ def search(vector_client, query:str, filter={}) -> list[Paragraph]:
         paragraphs[paragraph_id]['questions'].append(metadata)
 
     # print("================ QUESTIONS ================")
+    # Get questions
     question_matches = response_questions['matches'] # [ id, metadata, score, values ]
+    # Get the paragraph chunks that are associated with the questions
     vector_ids = [match['id'] for match in question_matches]
     question_paragraph_chunks = vector_client.get_paragraph_chunks_metadata_by_id(vector_ids) # [ metadata ]
 
@@ -96,25 +144,26 @@ def search(vector_client, query:str, filter={}) -> list[Paragraph]:
 
     reconstructed_paragraphs: list[Paragraph] = []
 
+    # pid_paragraph: { score, questions:[], chunks:[] }
+
     for pid, p in pid_paragraphs:
+
         first_chunk = p['chunks'][0]
         tdp_name = TDPName.from_string(first_chunk['tdp_name'])
         paragraph_title = first_chunk['paragraph_title']
         paragraph_sequence_id = int(first_chunk['paragraph_sequence_id'])
-        # print(pid, tdp_name)
 
         paragraph = Paragraph(
             tdp_name=tdp_name,
             text_raw=paragraph_title,
-            sequence_id=paragraph_sequence_id,
+            sequence_id=paragraph_sequence_id
         )
-
-        chunks_uniq = {}
-        for c in p['chunks']: chunks_uniq[int(c['chunk_sequence_id'])] = c
-        cid_chunk = sorted(chunks_uniq.items(), key=lambda x: x[0])
         
-        chunks = [_[1] for _ in cid_chunk]
-        
+        chunks_uniq = {} # { chunk_sequence_id: chunk }
+        for chunk in p['chunks']: chunks_uniq[int(chunk['chunk_sequence_id'])] = chunk
+        csid_chunk = sorted(chunks_uniq.items(), key=lambda x: x[0])
+        chunks = [_[1] for _ in csid_chunk]
+     
         chunks = list(map(lambda c: ParagraphChunk(
             paragraph=paragraph,
             text=c['text'],
@@ -125,8 +174,14 @@ def search(vector_client, query:str, filter={}) -> list[Paragraph]:
             
         reconstructed_text = reconstruct_paragraph_text(chunks)
 
+        if compress_text:
+            reconstructed_text = summarize_by_sentence(reconstructed_text, keywords)
+
         # TODO fix ugly hack
         paragraph.sentences.append(Sentence(text_raw=reconstructed_text))
+
+        questions = list(set([ q_metadata['question'] for q_metadata in p['questions'] ] ))
+        paragraph.questions = questions
 
         reconstructed_paragraphs.append(paragraph)
 
@@ -134,11 +189,11 @@ def search(vector_client, query:str, filter={}) -> list[Paragraph]:
         # print(f"SOURCE: team={tdp_name.team_name.name} year={tdp_name.year}")
         # print(f"TEXT: | {reconstructed_text} |")
 
-        SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
-        SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
-        SOURCES += f"TEXT : | {reconstructed_text} |"
+        # SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
+        # SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
+        # SOURCES += f"TEXT : | {reconstructed_text} |"
     
-    return reconstructed_paragraphs
+    return reconstructed_paragraphs, keywords
 
     print("\n\n\n")
     print(SOURCES)

@@ -3,6 +3,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+import time
 # Third party libraries
 import dotenv
 import numpy as np
@@ -31,6 +32,8 @@ class PineconeClient(ClientInterface):
     """ Paragraph chunks """
 
     def get_paragraph_chunks_metadata_by_id(self, ids:list[str]) -> list[dict]:
+        logger.info(f"Retrieving paragraphs by id with {len(ids)} ids")
+
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
         response = self.index_paragraph.fetch(ids)
@@ -80,6 +83,7 @@ class PineconeClient(ClientInterface):
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
         
+        t_start = time.time()
         response:QueryResponse = self.index_paragraph.query(
             vector=dense_vector.tolist(),
             sparse_vector={'indices':sparse_vector.col.tolist(), 'values':sparse_vector.data.tolist()},
@@ -87,7 +91,9 @@ class PineconeClient(ClientInterface):
             include_metadata=include_metadata,
             filter=filter
         )
+        t_stop = time.time()
 
+        logger.info(f"Index queried. Duration: {t_stop-t_start:.2f}s")
         return response
 
     def delete_paragraphs(self):
@@ -132,6 +138,7 @@ class PineconeClient(ClientInterface):
     """ Questions """
 
     def get_questions_metadata_by_id(self, ids:list[str]) -> list[dict]:
+        logger.info(f"Retrieving questions by id with {len(ids)} ids")
         if self.index_question is None:
             self.index_question = self.client.Index(self.INDEX_NAME_QUESTION)
         
@@ -156,7 +163,9 @@ class PineconeClient(ClientInterface):
             'paragraph_title': chunk.title,
             'league': chunk.tdp_name.league.name,
             'team': chunk.tdp_name.team_name.name,
-            'year': chunk.tdp_name.year
+            'year': chunk.tdp_name.year,
+
+            'run_id': uniqid
         }
         sparse_vector = SparseValues(indices=sparse_vector.col.tolist(), values=sparse_vector.data.tolist())
         vector = Vector(id=vector_id, values=dense_vector.tolist(), sparse_values=sparse_vector, metadata=metadata)
@@ -168,6 +177,7 @@ class PineconeClient(ClientInterface):
         if self.index_question is None:
             self.index_question = self.client.Index(self.INDEX_NAME_QUESTION)
         
+        t_start = time.time()
         response:QueryResponse = self.index_question.query(
             vector=dense_vector.tolist(),
             sparse_vector={'indices':sparse_vector.col.tolist(), 'values':sparse_vector.data.tolist()},
@@ -175,7 +185,9 @@ class PineconeClient(ClientInterface):
             include_metadata=include_metadata,
             filter=filter
         )
+        t_stop = time.time()
 
+        logger.info(f"Index queried. Duration: {t_stop-t_start:.2f}s")
         return response
 
     def delete_questions(self):

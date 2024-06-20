@@ -21,6 +21,20 @@ llm_client = OpenAIClient()
 
 print(f"Paragraphs: {vector_client.count_paragraphs()}    Questions: {vector_client.count_questions()}")
 
+def summarize_by_sentence(text:str, keywords:list[str]) -> str:
+    
+    print("Keywords:", keywords)
+    print(text)
+
+    keywords = [ _.lower() for _ in keywords ]
+    sentences = text.split(".")
+
+    sentences = [ _.strip() for _ in sentences if any([k in _ for k in keywords]) ]
+    print("---")
+    print(" ... ".join(sentences))
+
+    return " ... ".join(sentences)
+
 while True:
     print("\n\n")
     query = input("Enter query: ")
@@ -34,7 +48,12 @@ while True:
     }
 
     dense_vector = embeddor.embed_dense_openai(query)
-    sparse_vector = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
+    sparse_vector, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
+    print(keywords)
+    keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
+
+    print("sparse_vector", sparse_vector)
+    # continue
 
     response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=5, filter=filter)
     response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=10, filter=filter)
@@ -134,11 +153,14 @@ while True:
 
         SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
         SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
-        SOURCES += f"TEXT : | {reconstructed_text} |"
-    
+        SOURCES += f"TEXT : | {reconstructed_text} |\n"
+        SOURCES += f"SUMMARY : | {summarize_by_sentence(reconstructed_text, keywords )} |\n"
+
     print("\n\n\n")
     print(SOURCES)
     print("\n\n\n") 
+
+    continue
 
     with open("sources.txt", "w") as f:
         f.write(SOURCES)

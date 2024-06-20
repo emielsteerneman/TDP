@@ -88,18 +88,24 @@ class Embeddor:
         else:
             raise NotImplementedError("Batch encoding not implemented yet")
 
-    def embed_sparse_pinecone_bm25(self, text:str | list[str], is_query:bool=False) -> coo_array:
+    def embed_sparse_pinecone_bm25(self, text:str | list[str], is_query:bool=False) -> tuple[coo_array, dict]:
         if self.sparse_pinecone_bm25 is None:
             self.sparse_pinecone_bm25 = self.load_default_bm25_encoder()
             
         is_str:bool = isinstance(text, str)
 
         if is_str:
+            tokens = self.sparse_pinecone_bm25._tokenizer(text)
+
             if is_query:
                 sparse_dict = self.sparse_pinecone_bm25.encode_queries(text)
             else:
                 sparse_dict = self.sparse_pinecone_bm25.encode_documents(text)
-            return coo_array( (sparse_dict['values'], (np.zeros(len(sparse_dict['indices']),dtype=int), sparse_dict['indices']) ) )
+
+            array = coo_array( (sparse_dict['values'], (np.zeros(len(sparse_dict['indices']),dtype=int), sparse_dict['indices']) ) )
+            word_frequences = { word:freq for word, freq in zip(tokens, sparse_dict['values']) }    
+            return array, word_frequences
+
         else:
             raise NotImplementedError("Batch encoding not implemented yet")
 
