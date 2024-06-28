@@ -76,3 +76,6 @@ class TDPName:
 
     def __repr__(self):
         return self.filename
+
+    def __eq__(self, value: object) -> bool:
+        return self.filename == value.filename
