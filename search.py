@@ -31,6 +31,64 @@ def summarize_by_sentence(text:str, keywords:list[str]) -> str:
     
     return summary
 
+def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
+
+    keywords = [ _.lower() for _ in keywords ]
+    words = text.split(" ")
+
+    indices = [ i for i, word in enumerate(words) if any([ word.lower().startswith(k) for k in keywords ]) ]
+    differences = np.diff(indices)
+
+    ranges = []
+
+    i = 0
+    if len(differences):
+
+        indices_distance = list(zip(indices[1::], differences, differences[1::]))
+        indices_distance = [ (indices[0], 999, differences[0]) ] + indices_distance + [ (indices[-1], differences[-1], 999) ]
+        # print(indices_distance)
+        # print()
+
+        indices_distance = [ (a,b,c) for (a,b,c) in indices_distance if T<b or T<c ]
+        # print(indices_distance)
+
+        while True:
+            # print(f"{i} / {len(indices_distance)}")
+            if len(indices_distance) <= i: break
+            at = indices_distance[i]
+
+            if i < len(indices_distance)-1:
+                atnext = indices_distance[i+1]
+
+            if T < at[1] and T < at[2]:
+                # print("\nFOUND SINGLE")
+                # print(at)
+                ranges.append([ max(0, at[0]-N), min(len(words), at[0]+N) ])
+                i += 1
+            elif T < at[1] and T < indices_distance[i+1][2]:
+                # print("\nFOUND DOUBLE")
+                # print(at, indices_distance[i+1])
+                ranges.append([ max(0, at[0]-N), min(len(words), atnext[0]+N) ])
+                i += 2
+            else:
+                raise Exception("wtf")
+    else:
+        at = indices[0]
+        ranges.append([ at-3*N, at+3*N ])
+
+    # ranges = [ ( max(0, r[0]), min(len(words), r[0]) ) for r in ranges ]
+
+    sentences = []
+    for a, b in ranges:
+        # print()
+        # print(f"  {a:4} {b:4}")
+        sentence = " ".join(words[a:b])
+        sentences.append(sentence)
+
+    return " ... ".join(sentences)
+
+
+
 def search(vector_client:PineconeClient, query:str, filter={}, compress_text=False) -> list[Paragraph]:
     if query == "": return []
 
