@@ -11,8 +11,8 @@ pymongo
 PyMuPDF
 python-telegram-bot
 python-dotenv
-# rank_bm25
-# sentence-transformers
+rank_bm25
+sentence-transformers
 tiktoken
 weaviate-client
 wget
