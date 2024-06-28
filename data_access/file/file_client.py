@@ -24,7 +24,7 @@ class FileClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def list_pdfs(self) -> list[str]:
+    def list_pdfs(self) -> tuple[list[TDPName, str]]:
         raise NotImplementedError
 
     @abstractmethod
@@ -40,7 +40,7 @@ class FileClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_pdf_hash(self, tdp_name:TDPName):
+    def get_filehash(self, tdp_name:TDPName):
         raise NotImplementedError
 
     @abstractmethod
@@ -57,16 +57,39 @@ class AzureFileClient(FileClient):
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         self.container_client = self.blob_service_client.get_container_client("tdps")
 
-    def store_pdf(filepath_in:str, overwrite:bool=False):
-        pass
+    def store_pdf(self, filepath_in:str, tdpname:TDPName, overwrite:bool=False):
+        file_bytes = open(filepath_in, "rb").read()
+        self.container_client.upload_blob(
+            name=os.path.join("pdf", tdpname.to_filepath(ext="pdf")),
+            data=file_bytes
+        )
+        logger.info(f"Uploaded {filepath_in} to Azure Blob Storage")
 
-    def list_pdfs(self) -> list[str]:
-        pdfs = self.container_client.list_blobs()
-        pdfs = [ pdf for pdf in pdfs if pdf.name.endswith(".pdf") ]
-        # TODO remove this hack
-        pdfs = [ pdf for pdf in pdfs if "misc" not in pdf.name ]
-        # pdfs = [ TDPName.from_filepath(pdf.name) for pdf in pdfs ]
-        return pdfs
+    def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
+        file_bytes = open(filepath_in, "rb").read()
+        self.container_client.upload_blob(
+            name=os.path.join("html", tdp_name.to_filepath(ext="html")),
+            data=file_bytes
+        )
+        logger.info(f"Uploaded {filepath_in} to Azure Blob Storage")
+
+    def list_pdfs(self) -> tuple[list[TDPName], list[str]]:
+        return self.list_files(".pdf")
+
+    def list_htmls(self) -> tuple[list[TDPName], list[str]]:
+        return self.list_files(".html")
+
+    def list_files(self, ext) -> tuple[list[TDPName], list[str]]:
+        files = self.container_client.list_blobs()
+        files = [ file for file in files if file.name.endswith(ext) ]
+        files = [ file for file in files if "misc" not in file.name ]
+
+        if not len(files):
+            return [], []
+
+        afn, ahash = zip(*map(lambda f: [ TDPName.from_filepath(f['name']), base64.b64encode(f['content_settings']['content_md5']).decode('ASCII')], files))
+
+        return afn, ahash
 
     def delete_pdf():
         raise ValueError("Not implemented")
@@ -77,7 +100,7 @@ class AzureFileClient(FileClient):
     def html_exists(self, tdp_name:TDPName):
         raise ValueError("Not implemented")
 
-    def get_pdf_hash(self, tdp_name:TDPName):
+    def get_filehash(self, tdp_name:TDPName):
         raise ValueError("Not implemented")
     
     def get_pdf(self, tdp_name:TDPName, no_copy:bool=False):
@@ -93,10 +116,13 @@ class LocalFileClient(FileClient):
         self.pdf_root = os.path.join(root_dir, FileClient.PDF_ROOT)
         self.html_root = os.path.join(root_dir, FileClient.HMTL_ROOT)
             
-    def store_pdf(self, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
+    def store_pdf(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
         if self.pdf_exists(tdp_name) and not (overwrite or increment_index):
             raise FileExistsError(f"File {tdp_name} already exists")
-        raise NotImplementedError
+        
+        filepath_out:str = os.path.join(self.pdf_root, tdp_name.to_filepath(ext="pdf"))
+        os.makedirs(os.path.dirname(filepath_out), exist_ok=True)
+        shutil.copyfile(filepath_in, filepath_out)
 
     def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
         if self.html_exists(tdp_name) and not (overwrite or increment_index):
@@ -112,18 +138,25 @@ class LocalFileClient(FileClient):
             raise FileNotFoundError(f"File {tdp_name} does not exist")
         os.remove(filepath)
 
-    def list_pdfs(self) -> list[TDPName]:
-        pdfs = []
-        for root, _, files in os.walk(self.pdf_root):
+    def list_pdfs(self) -> tuple[list[TDPName], list[str]]:
+        return self.list_files(self.pdf_root, ".pdf")
+    
+    def list_htmls(self) -> tuple[list[TDPName], list[str]]:
+        return self.list_files(self.html_root, ".html")
+
+    def list_files(self, ext_root, ext) -> tuple[list[TDPName], list[str]]:
+        files_listed = []
+        for root, _, files in os.walk(ext_root):
             for file in files:
-                if file.endswith(".pdf"):
+                if file.endswith(ext):
                     filepath = os.path.join(root, file)
                     # TODO remove this hack
                     if "misc" in filepath: continue
                     # Remove root_dir from filepath
-                    filepath = filepath[len(self.pdf_root)+1:]
-                    pdfs.append(TDPName.from_filepath(filepath))
-        return pdfs
+                    filepath = filepath[len(ext_root)+1:]
+                    files_listed.append(TDPName.from_filepath(filepath))
+        hashes = [ self.get_filehash(file) for file in files_listed ]
+        return files_listed, hashes
 
     def pdf_exists(self, tdp_name: TDPName):
         filepath:str = os.path.join(self.pdf_root, tdp_name.to_filepath(ext="pdf"))
@@ -133,7 +166,7 @@ class LocalFileClient(FileClient):
         filepath:str = os.path.join(self.html_root, tdp_name.to_filepath(ext="html"))
         return os.path.isfile(filepath)
 
-    def get_pdf_hash(self, filepath:str|TDPName) -> str:
+    def get_filehash(self, filepath:str|TDPName) -> str:
         """Generate md5 base64-encoded hash of a file, equivalent to the hashes in Azure Blob Storage
 
         Args:
@@ -151,7 +184,7 @@ class LocalFileClient(FileClient):
         return b64
 
     def get_pdf(self, tdp_name:TDPName, no_copy:bool=False) -> str:
-        filepath = tdp_name.to_filepath()
+        filepath = tdp_name.to_filepath(ext="pdf")
 
         if no_copy:
             return os.path.join(self.pdf_root, filepath)
@@ -163,18 +196,33 @@ class LocalFileClient(FileClient):
 
             return filepath_tmp
 
+    def get_html(self, tdp_name:TDPName, no_copy:bool=False) -> str:
+        filepath = tdp_name.to_filepath(ext="html")
+
+        if no_copy:
+            return os.path.join(self.html_root, filepath)
+        else:
+            os.makedirs("tmp", exist_ok=True)
+            # Copy file to tmp directory
+            filepath_tmp = os.path.join("tmp", "temp.html")
+            shutil.copyfile(os.path.join(self.html_root, filepath), filepath_tmp)
+
+            return filepath_tmp
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    localmanager = LocalFileClient("tdps")
+    localmanager = LocalFileClient("static")
     local_pdfs = localmanager.list_pdfs()
     print(f"{len(local_pdfs)} PDFs stored locally")
 
-    for pdf in local_pdfs:
-        if "smallsize" in pdf and "2020" in pdf and "Force" in pdf:
-            print(pdf)
-            print(localmanager.get_pdf_hash(pdf))
+
+
+    azuremanager = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
+    filename = "soccer_smallsize__2025__RoboTeam_Twente__0.pdf"
+    tdpname = TDPName.from_filepath(filename)
+    azuremanager.store_pdf("soccer_smallsize__2025__RoboTeam_Twente__0.pdf", tdpname)
 
     # if os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING") is None:
     #     print("Missing variable AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING in .env")
