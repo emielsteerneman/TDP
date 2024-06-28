@@ -44,7 +44,7 @@ llm_client = OpenAIClient()
 
 profiler = SimpleProfiler()
 
-pdfs:list[TDPName] = file_client.list_pdfs()
+pdfs:list[TDPName] = file_client.list_pdfs()[0]
 
 # pdfs = [ _ for _ in pdfs if "RoboTeam_Twente" in _.filename ]
 pdfs = [ _ for _ in pdfs if "rescue_robot" not in _.filename.lower() ]
@@ -150,7 +150,7 @@ for i_pdf, tdp_name in enumerate(pdfs):
         print(f"\n\n\nProcessing PDF {i_pdf+1:3}/{len(pdfs)} : {tdp_name}")
         profiler.start("load pdf and hash")
         pdf_filepath = file_client.get_pdf(tdp_name, no_copy=True)
-        pdf_filehash = file_client.get_pdf_hash(tdp_name)
+        pdf_filehash = file_client.get_filehash(tdp_name)
         profiler.stop()
 
         profiler.start("find tdp in metadata")

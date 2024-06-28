@@ -43,6 +43,7 @@ while True:
         continue
 
     filter={
+        "league":"soccer_smallsize"
         # "team":"RoboTeam_Twente",
         # "year":2022
     }
@@ -159,8 +160,6 @@ while True:
     print("\n\n\n")
     print(SOURCES)
     print("\n\n\n") 
-
-    continue
 
     with open("sources.txt", "w") as f:
         f.write(SOURCES)

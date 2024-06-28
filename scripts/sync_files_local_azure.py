@@ -16,9 +16,50 @@ from data_structures.TDPName import TDPName
 local_file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
 azure_file_client:AzureFileClient = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
 
+
+def local_to_azure(is_pdf:bool=True):
+    if is_pdf:
+        az_files, az_hashes = azure_file_client.list_pdfs()
+        local_files, local_hashes = local_file_client.list_pdfs()
+    else:
+        az_files, az_hashes = azure_file_client.list_htmls()
+        local_files, local_hashes = local_file_client.list_htmls()
+
+    print(f"Number of files on local: {len(local_hashes)}")
+    print(f"Number of files in Azure: {len(az_hashes)}")
+
+    az_hashmap = dict(zip(az_hashes, az_files))
+    local_hashmap = dict(zip(local_hashes, local_files))
+
+    for local_hash in local_hashes:
+        # File is present in Azure
+        if local_hash in az_hashmap:
+            if local_hashmap[local_hash] == az_hashmap[local_hash]:
+                continue
+            
+            # File has conflicting filenames
+            print(f"File with hash {local_hash} has conflicting filenames")
+            print(f"  Azure: {az_hashmap[local_hash]}")
+            print(f"  Local: {local_hashmap[local_hash]}")
+        
+        # File is not present in Azure
+        else:
+            print(f"Uploading file with hash {local_hash} to Azure...")
+            tdpname = local_hashmap[local_hash]
+            if is_pdf:
+                filepath = local_file_client.get_pdf(local_hashmap[local_hash])
+                azure_file_client.store_pdf(filepath, tdpname)
+            else:
+                filepath = local_file_client.get_html(local_hashmap[local_hash])
+                azure_file_client.store_html(filepath, tdpname)
+
+local_to_azure(is_pdf=False)
+
+exit()
+
 afn, ahash = zip(*map(lambda f: [f['name'], base64.b64encode(f['content_settings']['content_md5']).decode('ASCII')], azure_file_client.list_pdfs()))
 amap = dict(zip(ahash, afn))
-lfn, lhash = zip(*map(lambda f: [f.filename, local_file_client.get_pdf_hash(f)], local_file_client.list_pdfs()))
+lfn, lhash = zip(*map(lambda f: [f.filename, local_file_client.get_filehash(f)], local_file_client.list_pdfs()))
 lmap = dict(zip(lhash, lfn))
 
 tdp_names = [TDPName.from_filepath(fn) for fn in lfn]

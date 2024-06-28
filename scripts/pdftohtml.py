@@ -10,7 +10,7 @@ import time
 import startup
 metadata_client, file_client = startup.get_clients()
 
-pdfs = file_client.list_pdfs()
+pdfs, _ = file_client.list_pdfs()
 
 command = ["pdftohtml", "-c", "-s", "-dataurls"]
 
