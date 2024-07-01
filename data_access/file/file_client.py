@@ -8,7 +8,7 @@ import base64
 import hashlib
 import shutil
 # Third party libraries
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, ContentSettings
 import dotenv
 # Local libraries
 from data_structures.TDPName import TDPName
@@ -86,20 +86,20 @@ class AzureFileClient(FileClient):
         self.store_pdf_from_bytes(open(filepath_in, "rb").read(), tdpname, overwrite)
 
     def store_pdf_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
-        self.container_client.upload_blob(
-            name=os.path.join("pdf", tdp_name.to_filepath(ext="pdf")),
-            data=file_bytes
-        )
+        content_settings = ContentSettings(content_type="application/pdf", cache_control="max-age=604800")
+        name:str = os.path.join(self.PDF_ROOT, tdp_name.to_filepath(TDPName.PDF_EXT))
+
+        self.container_client.upload_blob(name=name, data=file_bytes, content_settings=content_settings)
         logger.info(f"Uploaded {tdp_name} to Azure Blob Storage")
 
     def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False):
         self.store_html_from_bytes(open(filepath_in, "rb").read(), tdp_name, overwrite)
 
     def store_html_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
-        self.container_client.upload_blob(
-            name=os.path.join("html", tdp_name.to_filepath(ext="html")),
-            data=file_bytes
-        )
+        content_settings = ContentSettings(content_type="text/html", cache_control="max-age=604800")
+        name:str = os.path.join(self.HMTL_ROOT, tdp_name.to_filepath(TDPName.HTML_EXT))
+
+        self.container_client.upload_blob(name=name, data=file_bytes, content_settings=content_settings)
         logger.info(f"Uploaded {tdp_name} to Azure Blob Storage")
 
     def list_pdfs(self) -> tuple[list[TDPName], list[str]]:
