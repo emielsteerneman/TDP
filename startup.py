@@ -21,6 +21,7 @@ def get_clients() -> tuple[MongoDBClient, AzureFileClient|LocalFileClient]:
         return metadata_client, file_client
 
     ENVIRONMENT:str = get_environment()
+    logger.info(f"ENVIRONMENT : {ENVIRONMENT}")
 
     if ENVIRONMENT == "LOCAL":
         metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))

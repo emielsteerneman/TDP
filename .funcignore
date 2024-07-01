@@ -13,3 +13,7 @@
 !data_access
 !MyLogger.py
 !startup.py
+!blacklist.py
+!search.py
+!simple_profiler.py
+!uniqid.py

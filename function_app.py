@@ -11,6 +11,8 @@ from data_structures.TDPName import TDPName
 from MyLogger import logger
 import startup
 
+print("Running...")
+
 load_dotenv()
 
 azure_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -23,9 +25,9 @@ def metadata_find(req: func.HttpRequest):
     year = int(req.params.get('year')) if req.params.get('year') else None
     league = req.params.get('league')
 
-    if team is None: team = "RoboTeam_Twente"
-    if year is None: year = 2019
-    if league is None: league = "soccer_smallsize"
+    # if team is None: team = "RoboTeam_Twente"
+    # if year is None: year = 2019
+    # if league is None: league = "soccer_smallsize"
 
     metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
     tdps = metadata_client.find_tdps(team=team, year=year, league=league)
@@ -49,14 +51,15 @@ def api_tdp_pdf(req: func.HttpRequest) -> func.HttpResponse:
     
     env = startup.get_environment()
 
+    tdp_name:str = req.route_params.get('tdp_name')
+    tdp_name:TDPName = TDPName.from_string(tdp_name)
+
     if env == "LOCAL":
-        # with open(f"webapp/static/tdps/{tdp_name}.pdf", "rb") as f:
-        #     pdf_bytes = f.read()
-        # return func.HttpResponse(pdf_bytes, mimetype="application/pdf")
-        return func.HttpResponse("<h1>Not implemented</h1>", mimetype="text/html")
+        with open(f"static/pdf/{tdp_name.to_filepath(ext='pdf')}", "rb") as f:
+            pdf_bytes = f.read()
+        return func.HttpResponse(pdf_bytes, mimetype="application/pdf")
+        # return func.HttpResponse("<h1>Not implemented</h1>", mimetype="text/html")
 
     if env == "AZURE":
-        tdp_name:str = req.route_params.get('tdp_name')
-        tdp_name:TDPName = TDPName.from_string(tdp_name)
-        redirect_url:str = f"https://tdps.blob.core.windows.net/tdps/{tdp_name.to_filepath()}"
+        redirect_url:str = f"https://tdps.blob.core.windows.net/tdps/pdf/{tdp_name.to_filepath(ext='pdf')}"
         return func.HttpResponse(status_code=302, headers={"Location": redirect_url})
