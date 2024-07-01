@@ -16,8 +16,7 @@ from data_structures.TDPName import TDPName
 local_file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
 azure_file_client:AzureFileClient = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
 
-
-def local_to_azure(is_pdf:bool=True):
+def local_to_azure(is_pdf:bool=True, force:bool=False):
     if is_pdf:
         az_files, az_hashes = azure_file_client.list_pdfs()
         local_files, local_hashes = local_file_client.list_pdfs()
@@ -31,60 +30,89 @@ def local_to_azure(is_pdf:bool=True):
     az_hashmap = dict(zip(az_hashes, az_files))
     local_hashmap = dict(zip(local_hashes, local_files))
 
+    # For each file on local
     for local_hash in local_hashes:
+        tdpname_local = local_hashmap[local_hash]
+        
         # File is present in Azure
         if local_hash in az_hashmap:
-            if local_hashmap[local_hash] == az_hashmap[local_hash]:
-                continue
+            tdpname_azure = az_hashmap[local_hash]
+
+            # Filenames match
+            if tdpname_local == tdpname_azure: continue
             
             # File has conflicting filenames
             print(f"File with hash {local_hash} has conflicting filenames")
-            print(f"  Azure: {az_hashmap[local_hash]}")
-            print(f"  Local: {local_hashmap[local_hash]}")
-        
-        # File is not present in Azure
-        else:
-            print(f"Uploading file with hash {local_hash} to Azure...")
-            tdpname = local_hashmap[local_hash]
+            print(f"  Azure: {tdpname_local}")
+            print(f"  Local: {tdpname_azure}")
+
+            # Don't fix the conflict
+            if not force: continue
+
+            # Fix the conflict by removing the file from Azure
+            print(f"Deleting file with hash {local_hash} from Azure... {tdpname_azure}")
             if is_pdf:
-                filepath = local_file_client.get_pdf(local_hashmap[local_hash])
-                azure_file_client.store_pdf(filepath, tdpname)
+                azure_file_client.delete_pdf(tdpname_azure)
             else:
-                filepath = local_file_client.get_html(local_hashmap[local_hash])
-                azure_file_client.store_html(filepath, tdpname)
+                azure_file_client.delete_html(tdpname_azure)
 
-local_to_azure(is_pdf=False)
+        # File is not present in Azure, upload it
+        print(f"Uploading file with hash {local_hash} to Azure... {tdpname_local}")
+        if is_pdf:
+            filepath = local_file_client.get_pdf(tdpname_local)
+            azure_file_client.store_pdf(filepath, tdpname_local)
+        else:
+            filepath = local_file_client.get_html(tdpname_local)
+            azure_file_client.store_html(filepath, tdpname_local)
 
-exit()
+def azure_to_local(is_pdf:bool=True, force:bool=False):
+    if is_pdf:
+        az_files, az_hashes = azure_file_client.list_pdfs()
+        local_files, local_hashes = local_file_client.list_pdfs()
+    else:
+        az_files, az_hashes = azure_file_client.list_htmls()
+        local_files, local_hashes = local_file_client.list_htmls()
 
-afn, ahash = zip(*map(lambda f: [f['name'], base64.b64encode(f['content_settings']['content_md5']).decode('ASCII')], azure_file_client.list_pdfs()))
-amap = dict(zip(ahash, afn))
-lfn, lhash = zip(*map(lambda f: [f.filename, local_file_client.get_filehash(f)], local_file_client.list_pdfs()))
-lmap = dict(zip(lhash, lfn))
+    print(f"Number of files on local: {len(local_hashes)}")
+    print(f"Number of files in Azure: {len(az_hashes)}")
 
-tdp_names = [TDPName.from_filepath(fn) for fn in lfn]
-team_names = set([tdp_name.team_name.name for tdp_name in tdp_names])
-team_names = sorted(list(team_names))
-print("Team names:")
-print("\n".join(team_names))
+    az_hashmap = dict(zip(az_hashes, az_files))
+    local_hashmap = dict(zip(local_hashes, local_files))
 
-exit()
+    # For each file on Azure
+    for az_hash in az_hashes:
+        tdpname_azure = az_hashmap[az_hash]
 
-print(f"Number of files in Azure: {len(ahash)}")
-print(f"Number of files on local: {len(lhash)}")
-print()
+        # File is present on local
+        if az_hash in local_hashmap:
+            tdpname_local = local_hashmap[az_hash]
 
-a_missing = [lmap[lhash] for lhash in lhash if lhash not in ahash]
-l_missing = [amap[ahash] for ahash in ahash if ahash not in lhash]
+            # Filenames match
+            if az_hashmap[az_hash] == local_hashmap[az_hash]: continue
+            
+            # File has conflicting filenames
+            print(f"File with hash {az_hash} has conflicting filenames")
+            print(f"  Azure: {tdpname_azure}")
+            print(f"  Local: {tdpname_local}")
 
-print(f"Number of files missing in Azure: {len(a_missing)}")
-print(f"Number of files missing on local: {len(l_missing)}")
-print()
+            # Don't fix the conflict
+            if not force: continue
 
-print( "\n".join( a_missing ) )
-
-exit()
-
+            # Fix the conflict by removing the file from local
+            print(f"Deleting file with hash {az_hash} from local... {tdpname_local}")
+            if is_pdf:
+                local_file_client.delete_pdf(tdpname_local)
+            else:
+                local_file_client.delete_html(tdpname_local)
+        
+        # File is not present on local
+        print(f"Downloading file with hash {az_hash} from Azure... {tdpname_azure}")
+        if is_pdf:
+            filebytes = azure_file_client.get_pdf_as_bytes(tdpname_azure)
+            local_file_client.store_pdf_from_bytes(filebytes, tdpname_azure)
+        else:
+            filebytes = azure_file_client.get_html_as_bytes(tdpname_azure)
+            local_file_client.store_html_from_bytes(filebytes, tdpname_azure)
 
 def get_hashes_from_azure():
     print("Getting hashes from Azure...")
@@ -95,56 +123,27 @@ def get_hashes_from_azure():
     print(f"Received {len(output)} hashes from Azure.")
     return output
 
-hashes_az = get_hashes_from_azure()
+if __name__ == "__main__":
+    while True:
+        try:
+            print("1. Sync local PDFs to Azure")
+            print("2. Sync Azure PDFs to local")
+            print("3. Sync local HTMLs to Azure")
+            print("4. Sync Azure HTMLs to local")
+            print()
+            choice = int(input("Enter choice: "))
+            force:bool = input("Force fix conflicts? (y/n): ") == "y"
 
-tdps_az, hashes_az = zip(*hashes_az)
-
-tdps_local_set1 = U.find_all_tdps("tdps")
-tdps_local_set2 = U.find_all_tdps("/home/emiel/Desktop/projects/rust_tdp_scraper/TDPs")
-
-hashes_local_set1 = [ ]
-print("Calculating hashes local set 1...")
-for tdp in tdps_local_set1:
-    with open(tdp, "rb") as f:
-        file_hash = base64.b64encode( hashlib.md5(f.read()).digest() ).decode('ASCII')
-        hashes_local_set1.append(file_hash)
-
-hashes_local_set2 = [ ]
-print("Calculating hashes local set 2...")
-for tdp in tdps_local_set2:
-    with open(tdp, "rb") as f:
-        file_hash = base64.b64encode( hashlib.md5(f.read()).digest() ).decode('ASCII')
-        hashes_local_set2.append(file_hash)
-
-# print("Checking if all files in local set 1 are in local set 2...")
-# for i_hash_local, hash_local in enumerate(hashes_local_set1):
-#     filepath = tdps_local_set1[i_hash_local]
-#     if hash_local not in hashes_local_set2:
-#         print(f"File {filepath} not found in local set 2")
-
-# print("Checking if all files in local set 2 are in local set 1...")
-# for i_hash_local, hash_local in enumerate(hashes_local_set2):
-#     filepath = tdps_local_set2[i_hash_local]
-#     if hash_local not in hashes_local_set1:
-#         print(f"File {filepath} not found in local set 1")
-
-# print("Checking if all files in Azure are in local set 1...")
-# for i_hash_az, hash_az in enumerate(hashes_az):
-#     filepath = tdps_az[i_hash_az]
-#     if hash_az not in hashes_local_set1:
-#         print(f"File {filepath} not found in local set 1")
-
-print("Checking if all files in local set 1 are in Azure...")
-for i_hash_local, hash_local in enumerate(hashes_local_set1):
-    filepath = tdps_local_set1[i_hash_local]
-    if hash_local not in hashes_az:
-        print(f"File {filepath} not found in az set")
-
-print("Checking if all files in local set 2 are in Azure...")
-for i_hash_local, hash_local in enumerate(hashes_local_set2):
-    filepath = tdps_local_set2[i_hash_local]
-    if hash_local not in hashes_az:
-        print(f"File {filepath} not found in az set")
-
-
-
+            if choice == 1:
+                local_to_azure(is_pdf=True, force=force)
+            elif choice == 2:
+                azure_to_local(is_pdf=True, force=force)
+            elif choice == 3:
+                local_to_azure(is_pdf=False, force=force)
+            elif choice == 4:
+                azure_to_local(is_pdf=False, force=force)
+            else:
+                print("Invalid choice")
+            print("\n")
+        except Exception:
+            print("\n")
