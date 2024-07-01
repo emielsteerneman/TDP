@@ -8,6 +8,9 @@ class TDPName:
 
     """ Constructors """
 
+    PDF_EXT:str = ".pdf"
+    HTML_EXT:str = ".html"
+
     def __init__(self, league:League, team_name:TeamName, year:int|str, index:int=0) -> TDPName:
 
         self.league:League = league
@@ -70,10 +73,9 @@ class TDPName:
             "index": self.index
         }
 
-    def to_filepath(self, ext="pdf") -> str:
-        return os.path.join(*self.league.to_parts(), str(self.year), self.filename) + f".{ext}"
+    def to_filepath(self, ext) -> str:
+        return os.path.join(*self.league.to_parts(), str(self.year), self.filename) + f".{ext.strip('.')}"
     
-
     def __repr__(self):
         return self.filename
 

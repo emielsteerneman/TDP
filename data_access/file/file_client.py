@@ -9,6 +9,7 @@ import hashlib
 import shutil
 # Third party libraries
 from azure.storage.blob import BlobServiceClient
+import dotenv
 # Local libraries
 from data_structures.TDPName import TDPName
 from MyLogger import logger
@@ -21,6 +22,18 @@ class FileClient(ABC):
 
     @abstractmethod
     def store_pdf(filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
+        raise NotImplementedError
+
+    @abstractmethod
+    def store_pdf_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def store_html_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
         raise NotImplementedError
 
     @abstractmethod
@@ -44,7 +57,19 @@ class FileClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_pdf(self, tdp_name:TDPName, no_copy:bool=False):
+    def get_pdf(self, tdp_name:TDPName, no_copy:bool=False) -> str:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_pdf_as_bytes(self, tdp_name:TDPName) -> bytes:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_html(self, tdp_name:TDPName, no_copy:bool=False) -> str:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_html_as_bytes(self, tdp_name:TDPName) -> bytes:
         raise NotImplementedError
     
     """"""""""""""""""""""""""""""""""""""
@@ -58,20 +83,24 @@ class AzureFileClient(FileClient):
         self.container_client = self.blob_service_client.get_container_client("tdps")
 
     def store_pdf(self, filepath_in:str, tdpname:TDPName, overwrite:bool=False):
-        file_bytes = open(filepath_in, "rb").read()
+        self.store_pdf_from_bytes(open(filepath_in, "rb").read(), tdpname, overwrite)
+
+    def store_pdf_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
         self.container_client.upload_blob(
-            name=os.path.join("pdf", tdpname.to_filepath(ext="pdf")),
+            name=os.path.join("pdf", tdp_name.to_filepath(ext="pdf")),
             data=file_bytes
         )
-        logger.info(f"Uploaded {filepath_in} to Azure Blob Storage")
+        logger.info(f"Uploaded {tdp_name} to Azure Blob Storage")
 
-    def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
-        file_bytes = open(filepath_in, "rb").read()
+    def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False):
+        self.store_html_from_bytes(open(filepath_in, "rb").read(), tdp_name, overwrite)
+
+    def store_html_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
         self.container_client.upload_blob(
             name=os.path.join("html", tdp_name.to_filepath(ext="html")),
             data=file_bytes
         )
-        logger.info(f"Uploaded {filepath_in} to Azure Blob Storage")
+        logger.info(f"Uploaded {tdp_name} to Azure Blob Storage")
 
     def list_pdfs(self) -> tuple[list[TDPName], list[str]]:
         return self.list_files(".pdf")
@@ -91,8 +120,13 @@ class AzureFileClient(FileClient):
 
         return afn, ahash
 
-    def delete_pdf():
-        raise ValueError("Not implemented")
+    def delete_pdf(self, tdp_name:TDPName):
+        filepath = os.path.join(self.PDF_ROOT, tdp_name.to_filepath())
+        self.container_client.delete_blob(filepath, delete_snapshots="include")
+
+    def delete_html(self, tdp_name:TDPName):
+        filepath = os.path.join(self.HMTL_ROOT, tdp_name.to_filepath())
+        self.container_client.delete_blob(filepath, delete_snapshots="include")
 
     def pdf_exists(self, tdp_name:TDPName):
         raise ValueError("Not implemented")
@@ -103,8 +137,28 @@ class AzureFileClient(FileClient):
     def get_filehash(self, tdp_name:TDPName):
         raise ValueError("Not implemented")
     
-    def get_pdf(self, tdp_name:TDPName, no_copy:bool=False):
-        raise ValueError("Not implemented")
+    def get_pdf(self, tdp_name: TDPName, no_copy: bool = False) -> str:
+        raise ValueError("Unsupported operation")
+
+    def get_pdf_as_bytes(self, tdp_name:TDPName) -> bytes:
+        filepath = os.path.join(self.PDF_ROOT, tdp_name.to_filepath(TDPName.PDF_EXT))
+        try:
+            return self.container_client.download_blob(filepath).readall()
+        except Exception as e:
+            logger.error(f"Failed to download {tdp_name} from Azure Blob Storage at {filepath}")
+            raise e
+
+    def get_html(self, tdp_name:TDPName, no_copy:bool=False) -> str:
+        raise ValueError("Unsupported operation")
+    
+    def get_html_as_bytes(self, tdp_name:TDPName) -> bytes:
+        filepath = os.path.join(self.HMTL_ROOT, tdp_name.to_filepath(TDPName.HTML_EXT))
+        try:
+            return self.container_client.download_blob(filepath).readall()
+        except Exception as e:
+            logger.error(f"Failed to download {tdp_name} from Azure Blob Storage at {filepath}")
+            raise e
+
     
 class LocalFileClient(FileClient):
     def __init__(self, root_dir:str):
@@ -116,21 +170,39 @@ class LocalFileClient(FileClient):
         self.pdf_root = os.path.join(root_dir, FileClient.PDF_ROOT)
         self.html_root = os.path.join(root_dir, FileClient.HMTL_ROOT)
             
-    def store_pdf(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
-        if self.pdf_exists(tdp_name) and not (overwrite or increment_index):
+    def store_pdf(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False):
+        if self.pdf_exists(tdp_name) and not overwrite:
             raise FileExistsError(f"File {tdp_name} already exists")
         
-        filepath_out:str = os.path.join(self.pdf_root, tdp_name.to_filepath(ext="pdf"))
+        filepath_out:str = os.path.join(self.pdf_root, tdp_name.to_filepath(TDPName.PDF_EXT))
         os.makedirs(os.path.dirname(filepath_out), exist_ok=True)
         shutil.copyfile(filepath_in, filepath_out)
 
-    def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False, increment_index:bool=False):
-        if self.html_exists(tdp_name) and not (overwrite or increment_index):
+    def store_pdf_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
+        if self.pdf_exists(tdp_name) and not overwrite:
             raise FileExistsError(f"File {tdp_name} already exists")
         
-        filepath_out:str = os.path.join(self.html_root, tdp_name.to_filepath(ext="html"))
+        filepath_out:str = os.path.join(self.pdf_root, tdp_name.to_filepath(TDPName.PDF_EXT))
+        os.makedirs(os.path.dirname(filepath_out), exist_ok=True)
+        with open(filepath_out, "wb") as f:
+            f.write(file_bytes)
+
+    def store_html(self, filepath_in:str, tdp_name:TDPName, overwrite:bool=False):
+        if self.html_exists(tdp_name) and not overwrite:
+            raise FileExistsError(f"File {tdp_name} already exists")
+        
+        filepath_out:str = os.path.join(self.html_root, tdp_name.to_filepath(TDPName.HTML_EXT))
         os.makedirs(os.path.dirname(filepath_out), exist_ok=True)
         shutil.copyfile(filepath_in, filepath_out)
+
+    def store_html_from_bytes(self, file_bytes:bytes, tdp_name:TDPName, overwrite:bool=False):
+        if self.html_exists(tdp_name) and not overwrite:
+            raise FileExistsError(f"File {tdp_name} already exists")
+        
+        filepath_out:str = os.path.join(self.html_root, tdp_name.to_filepath(TDPName.HTML_EXT))
+        os.makedirs(os.path.dirname(filepath_out), exist_ok=True)
+        with open(filepath_out, "wb") as f:
+            f.write(file_bytes)
 
     def delete_pdf(self, tdp_name:TDPName):
         filepath:str = os.path.join(self.pdf_root, tdp_name.to_filepath())
@@ -138,76 +210,90 @@ class LocalFileClient(FileClient):
             raise FileNotFoundError(f"File {tdp_name} does not exist")
         os.remove(filepath)
 
+    def delete_html(self, tdp_name:TDPName):
+        filepath:str = os.path.join(self.html_root, tdp_name.to_filepath())
+        if not os.path.isfile(filepath):
+            raise FileNotFoundError(f"File {tdp_name} does not exist")
+        os.remove(filepath)
+
     def list_pdfs(self) -> tuple[list[TDPName], list[str]]:
-        return self.list_files(self.pdf_root, ".pdf")
+        return self.list_files(self.pdf_root, TDPName.PDF_EXT)
     
     def list_htmls(self) -> tuple[list[TDPName], list[str]]:
-        return self.list_files(self.html_root, ".html")
+        return self.list_files(self.html_root, TDPName.HTML_EXT)
 
-    def list_files(self, ext_root, ext) -> tuple[list[TDPName], list[str]]:
+    def list_files(self, root, ext) -> tuple[list[TDPName], list[str]]:
         files_listed = []
-        for root, _, files in os.walk(ext_root):
+        for root_, _, files in os.walk(root):
             for file in files:
                 if file.endswith(ext):
-                    filepath = os.path.join(root, file)
+                    filepath = os.path.join(root_, file)
                     # TODO remove this hack
                     if "misc" in filepath: continue
                     # Remove root_dir from filepath
-                    filepath = filepath[len(ext_root)+1:]
+                    filepath = filepath[len(ext)+1:]
                     files_listed.append(TDPName.from_filepath(filepath))
-        hashes = [ self.get_filehash(file) for file in files_listed ]
+        hashes = [ self.get_filehash(file, ext) for file in files_listed ]
         return files_listed, hashes
 
     def pdf_exists(self, tdp_name: TDPName):
-        filepath:str = os.path.join(self.pdf_root, tdp_name.to_filepath(ext="pdf"))
+        filepath:str = os.path.join(self.pdf_root, tdp_name.to_filepath(ext=TDPName.PDF_EXT))
         return os.path.isfile(filepath)
 
     def html_exists(self, tdp_name: TDPName):
-        filepath:str = os.path.join(self.html_root, tdp_name.to_filepath(ext="html"))
+        filepath:str = os.path.join(self.html_root, tdp_name.to_filepath(ext=TDPName.HTML_EXT))
         return os.path.isfile(filepath)
 
-    def get_filehash(self, filepath:str|TDPName) -> str:
+    def get_filehash(self, tdpname:str|TDPName, ext:str) -> str:
         """Generate md5 base64-encoded hash of a file, equivalent to the hashes in Azure Blob Storage
 
         Args:
             filepath (str | TDPName): Either the filepath or the TDPName object for the file to hash, relative to the root_dir
-
+            ext (str): The TDPName file extension
+            
         Returns:
             str: The md5 base64-encoded hash of the file
         """
-        if isinstance(filepath, TDPName):
-            filepath = filepath.to_filepath()
-    
-        rb:bytes = open(os.path.join(self.pdf_root, filepath), "rb").read()
+        if isinstance(tdpname, TDPName):
+            filepath = tdpname.to_filepath(ext)
+
+        root = self.pdf_root if ext == TDPName.PDF_EXT else self.html_root
+        rb:bytes = open(os.path.join(root, filepath), "rb").read()
         md5:str = hashlib.md5(rb).digest()
         b64:str = base64.b64encode(md5).decode()
         return b64
 
     def get_pdf(self, tdp_name:TDPName, no_copy:bool=False) -> str:
-        filepath = tdp_name.to_filepath(ext="pdf")
+        filepath = tdp_name.to_filepath(TDPName.PDF_EXT)
 
         if no_copy:
             return os.path.join(self.pdf_root, filepath)
         else:
             os.makedirs("tmp", exist_ok=True)
-            # Copy file to tmp directory
             filepath_tmp = os.path.join("tmp", "temp.pdf")
             shutil.copyfile(os.path.join(self.pdf_root, filepath), filepath_tmp)
 
             return filepath_tmp
 
+    def get_pdf_as_bytes(self, tdp_name:TDPName) -> bytes:
+        filepath = os.path.join(self.pdf_root, tdp_name.to_filepath(TDPName.PDF_EXT))
+        return open(filepath, "rb").read()
+
     def get_html(self, tdp_name:TDPName, no_copy:bool=False) -> str:
-        filepath = tdp_name.to_filepath(ext="html")
+        filepath = tdp_name.to_filepath(TDPName.HTML_EXT)
 
         if no_copy:
             return os.path.join(self.html_root, filepath)
         else:
             os.makedirs("tmp", exist_ok=True)
-            # Copy file to tmp directory
             filepath_tmp = os.path.join("tmp", "temp.html")
             shutil.copyfile(os.path.join(self.html_root, filepath), filepath_tmp)
 
             return filepath_tmp
+
+    def get_html_as_bytes(self, tdp_name:TDPName) -> bytes:
+        filepath = os.path.join(self.html_root, tdp_name.to_filepath(TDPName.HTML_EXT))
+        return open(filepath, "rb").read()
 
 if __name__ == "__main__":
     from dotenv import load_dotenv

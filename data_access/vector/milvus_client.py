@@ -51,8 +51,8 @@ class MyMilvusClient(ClientInterface):
 
         # Which fields are indexed automatically? Do I need to manually create an index for my VARCHAR fields as well?
         index_params = self.client.prepare_index_params()
-        index_params.add_index(field_name="dense_vector", index_type="FLAT", index_name="dense_vector")
-        index_params.add_index(field_name="sparse_vector", index_type="FLAT", index_name="sparse_vector")
+        index_params.add_index(field_name="dense_vector", index_type="FLAT", index_name="FLAT", metric_type="COSINE")
+        index_params.add_index(field_name="sparse_vector", index_type="SPARSE_INVERTED_INDEX", index_name="sparse_vector")
         index_params.add_index(field_name="tdp_name", index_name="tdp_name")
         index_params.add_index(field_name="league", index_name="league")
         index_params.add_index(field_name="team", index_name="team")
