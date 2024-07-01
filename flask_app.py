@@ -66,17 +66,13 @@ def api_tdp(tdp_name:str, is_pdf:bool=False):
         raise Exception("TDP does not exist")
 
     if is_pdf:
-        return send_from_directory("static/pdf", tdp_name.to_filepath())
+        return send_from_directory("static/pdf", tdp_name.to_filepath(TDPName.PDF_EXT), max_age=604800)
     else:
-        return send_from_directory("static/html", tdp_name.to_filepath(ext="html"))
+        return send_from_directory("static/html", tdp_name.to_filepath(TDPName.HTML_EXT), max_age=604800)
 
 @flask_app.route("/api/tdp/<tdp_name>/pdf")
 def api_tdp_pdf(tdp_name:str):
     return api_tdp(tdp_name, is_pdf=True)
-
-    # flask_response.headers['Content-Type'] = "application/json"
-    # flask_response.headers['Cache-Control'] = "max-age=604800, public"
-    # return flask_response
 
 @flask_app.route("/api/tdp/<tdp_name>/html")
 def api_tdp_html(tdp_name:str):
