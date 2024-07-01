@@ -55,11 +55,29 @@ def api_tdp_pdf(req: func.HttpRequest) -> func.HttpResponse:
     tdp_name:TDPName = TDPName.from_string(tdp_name)
 
     if env == "LOCAL":
-        with open(f"static/pdf/{tdp_name.to_filepath(ext='pdf')}", "rb") as f:
+        with open(f"static/pdf/{tdp_name.to_filepath(TDPName.PDF_EXT)}", "rb") as f:
             pdf_bytes = f.read()
         return func.HttpResponse(pdf_bytes, mimetype="application/pdf")
         # return func.HttpResponse("<h1>Not implemented</h1>", mimetype="text/html")
 
     if env == "AZURE":
-        redirect_url:str = f"https://tdps.blob.core.windows.net/tdps/pdf/{tdp_name.to_filepath(ext='pdf')}"
+        redirect_url:str = f"https://tdps.blob.core.windows.net/tdps/pdf/{tdp_name.to_filepath(TDPName.PDF_EXT)}"
+        return func.HttpResponse(status_code=302, headers={"Location": redirect_url})
+    
+@azure_app.route("tdp/{tdp_name}/html")
+def api_tdp_html(req: func.HttpRequest) -> func.HttpResponse:
+    
+    env = startup.get_environment()
+
+    tdp_name:str = req.route_params.get('tdp_name')
+    tdp_name:TDPName = TDPName.from_string(tdp_name)
+
+    if env == "LOCAL":
+        with open(f"static/html/{tdp_name.to_filepath(TDPName.HTML_EXT)}", "r") as f:
+            html = f.read()
+        return func.HttpResponse(html, mimetype="text/html")
+        # return func.HttpResponse("<h1>Not implemented</h1>", mimetype="text/html")
+
+    if env == "AZURE":
+        redirect_url:str = f"https://tdps.blob.core.windows.net/tdps/html/{tdp_name.to_filepath(TDPName.HTML_EXT)}"
         return func.HttpResponse(status_code=302, headers={"Location": redirect_url})
