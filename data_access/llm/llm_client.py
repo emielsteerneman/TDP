@@ -107,7 +107,7 @@ class OpenAIClient(LLMClient):
             },
             {
                 'role': 'user',
-                'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data): " + question
+                'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data), and end with a summary: " + question
             },
             {
                 'role': 'user',
