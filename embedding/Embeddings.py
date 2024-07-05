@@ -7,7 +7,7 @@ from pinecone_text.sparse import BM25Encoder
 # import pymilvus
 # import pymilvus.model
 from scipy.sparse import csr_matrix, coo_array
-import tiktoken
+# import tiktoken
 # Local libraries
 from MyLogger import logger
 
