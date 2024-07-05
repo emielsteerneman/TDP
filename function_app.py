@@ -7,6 +7,7 @@ from azure import functions as func
 # Local libraries
 import app
 from data_access.metadata.metadata_client import MongoDBClient
+from data_access.vector.pinecone_client import PineconeClient
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 import startup
@@ -16,6 +17,10 @@ print("Running...")
 load_dotenv()
 
 azure_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+metadata_client, file_client = startup.get_clients()
+vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
+
 
 # https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=linux%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python
 
@@ -81,3 +86,52 @@ def api_tdp_html(req: func.HttpRequest) -> func.HttpResponse:
     if env == "AZURE":
         redirect_url:str = f"https://tdps.blob.core.windows.net/tdps/html/{tdp_name.to_filepath(TDPName.HTML_EXT)}"
         return func.HttpResponse(status_code=302, headers={"Location": redirect_url})
+    
+@azure_app.route("query")
+def api_query(req: func.HttpRequest):
+    from search import search
+    query = req.params.get('query')
+
+    """
+    Flask equivalent
+
+    paragraphs, keywords = search(vector_client, query, compress_text=True)
+    paragraphs_json = []
+    for paragraph in paragraphs:
+        paragraphs_json.append({
+            'tdp_name': paragraph.tdp_name.to_dict(),
+            'title': paragraph.text_raw,
+            'content': paragraph.content_raw(),
+            'questions': paragraph.questions,
+        })
+
+    result = {
+        'paragraphs': paragraphs_json,
+        'keywords': keywords
+    }    
+
+    flask_response = Response(json.dumps(result))
+    flask_response.headers['Content-Type'] = "application/json"
+    # flask_response.headers['Cache-Control'] = "max-age=604800, public"
+    return flask_response
+
+    """
+
+    paragraphs, keywords = search(vector_client, query, compress_text=True)
+    paragraphs_json = []
+    for paragraph in paragraphs:
+        paragraphs_json.append({
+            'tdp_name': paragraph.tdp_name.to_dict(),
+            'title': paragraph.text_raw,
+            'content': paragraph.content_raw(),
+            'questions': paragraph.questions,
+        })
+
+    result = {
+        'paragraphs': paragraphs_json,
+        'keywords': keywords
+    }
+
+    json_response = json.dumps(result)
+    headers = { "Access-Control-Allow-Origin": "*" }
+    return func.HttpResponse(json_response, mimetype="application/json", headers=headers)
