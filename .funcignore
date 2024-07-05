@@ -17,3 +17,5 @@
 !search.py
 !simple_profiler.py
 !uniqid.py
+!embedding
+!embedding/Embeddings.py
