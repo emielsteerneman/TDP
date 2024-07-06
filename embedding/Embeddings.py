@@ -120,7 +120,7 @@ class Embeddor:
         """Create a BM25 model from pre-made params for the MS MARCO passages corpus"""
         bm25 = BM25Encoder()
         url = "https://storage.googleapis.com/pinecone-datasets-dev/bm25_params/msmarco_bm25_params_v4_0_0.json"
-        filepath = "msmarco_bm25_params_v4_0_0.json"
+        filepath = "/tmp/msmarco_bm25_params_v4_0_0.json"
         if not os.path.exists(filepath):
             logger.info(f"Downloading BM25 params from {url}")
             import wget
