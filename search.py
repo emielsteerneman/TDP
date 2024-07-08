@@ -10,11 +10,13 @@ import numpy as np
 # Local libraries
 from data_access.llm.llm_client import OpenAIClient
 from data_access.vector.pinecone_client import PineconeClient
+from data_access.vector.vector_filter import VectorFilter
 from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
 from data_structures.Sentence import Sentence
 from data_structures.TDPName import TDPName
 from embedding.Embeddings import instance as embeddor
+from MyLogger import logger
 from text_processing.text_processing import reconstruct_paragraph_text
 
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
@@ -89,23 +91,20 @@ def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
 
 
 
-def search(vector_client:PineconeClient, query:str, filter={}, compress_text=False) -> list[Paragraph]:
-    if query == "": return []
-
-    filter={
-        # "team":"RoboTeam_Twente",
-        # "year":2022
-    }
+def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, compress_text=False) -> tuple[list[Paragraph], list[str]]:
+    if query is None or query == "": return [], []
 
     dense_vector = embeddor.embed_dense_openai(query)
     sparse_vector, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
-    print(keywords)
     keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
+
+    logger.debug(f"Query: {query}")
+    logger.debug(f"Keywords: {keywords}")
+    logger.debug(f"Filer: {filter}")
 
     # Get paragraphs and questions from vector database
     response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=15, filter=filter)
     response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=30, filter=filter)
-
 
     """ Paragraph metadata:
     
@@ -143,6 +142,11 @@ def search(vector_client:PineconeClient, query:str, filter={}, compress_text=Fal
     paragraph_chunk_matches = response_paragraph_chunks['matches'] # [ id, metadata, score, values ]
     # Get the questions that are associated with the paragraph chunks
     vector_ids = [match['id'] for match in paragraph_chunk_matches]
+
+    if not len(vector_ids):
+        logger.debug("No matches found. Returning empty results")        
+        return [], []
+
     paragraph_chunk_questions = vector_client.get_questions_metadata_by_id(vector_ids) # [ metadata ]
     
     for i_match, match in enumerate(paragraph_chunk_matches):

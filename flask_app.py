@@ -15,6 +15,7 @@ import startup
 from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import FileClient
 from data_access.vector.pinecone_client import PineconeClient
+from data_access.vector.vector_filter import VectorFilter
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 
@@ -87,8 +88,8 @@ def api_query():
     from search import search
     # Get query from URL
     query = request.args.get('query')
-    print(query)
-           
+    filter = VectorFilter.from_dict(dict(request.args))
+
     myresponse = """[
   {
     "content": "A service robot is a robot that can assist humans to perform common daily tasks in a common environment, such as houses, offices or hospitals. With this in mind, the final goal of service robot must be make the life of humans easier and more comfortable. Also, a robot can be an excellent companion, in example for elderly or lonely people, making their life better and happier. To achieve this, a service robot must be capable of understanding spoken and visual commands in a natural way from humans, navigate in known and unknown environments avoiding static and dynamic obstacles, recognize and manipulating objects, detect and identify people, among several other tasks that a person might request. The team Pumas has participated in national and international competitions. In this year, in the Robocup 2018, our team obtenied the second place in the categoty DSPL@Home with the robot Takeshi and we were finalist in World Robot Summit(WRS) 2018. 2. TAKESHIS ROBOTICS ARCHITECTURE The paper is organized as follows: section 2 enumerates the software components of our robot Takeshi; section 3 presents overview of the latest research developments in our laboratory; and finally, in section 5, the conclusions and future work are given.",
@@ -1036,7 +1037,7 @@ def api_query():
       flask_response.headers['Cache-Control'] = "max-age=604800, public"
       return flask_response
 
-    paragraphs, keywords = search(vector_client, query, compress_text=True)
+    paragraphs, keywords = search(vector_client, query, filter, compress_text=True)
     paragraphs_json = []
     for paragraph in paragraphs:
         paragraphs_json.append({
@@ -1055,61 +1056,6 @@ def api_query():
     flask_response.headers['Content-Type'] = "application/json"
     # flask_response.headers['Cache-Control'] = "max-age=604800, public"
     return flask_response
-
-# @flask_app.route('/TDPs/<year>/<filename>')
-# def download_file(year, filename):
-#     return send_from_directory(f'TDPs/{year}', filename, as_attachment=True)
-
-# @flask_app.route('/templates/<filename>')
-# def static_file(filename):
-#     return send_from_directory(f'templates', filename)
-
-# @flask_app.route('/static/logos/<filename>')
-# def static_logo(filename):
-#     # Check if logo exists, else default logo
-#     if os.path.exists('static/logos/' + filename):
-#         return send_from_directory('static/logos', filename)
-#     else:
-#         return send_from_directory('static/logos', '10px.png')
-
-# @flask_app.get("/")
-# def homepage():
-#     print("Loading homepage")
-#     return send_from_directory('webapp/templates', 'index.html')
-
-# @flask_app.get("/tdps/<id>")
-# def get_tdps_id(id):
-#     try:
-#         ref = request.args.get('ref')
-#         tdp_db = db_instance.get_tdp_by_id(id)
-#         filepath = f"/TDPs/{tdp_db.year}/{tdp_db.filename}"
-#         entry_string = db_instance_tdp_views.post_tdp(tdp_db, ref)
-
-#         thread = threading.Thread(target=send_to_telegram, args=[entry_string])
-#         thread.start()
-
-#         return render_template('tdp.html', tdp=tdp_db, filepath=filepath)
-#     except Exception as e:
-#         print(e)
-#         # Return generic 404 page
-#         return render_template('404.html'), 404
-
-
-# """ /api/tdps/<tdp_id>/paragraphs """
-
-# @flask_app.get("/api/tdps/<tdp_id>/paragraphs")
-# def get_api_tdps_id_paragraphs(tdp_id):
-#     tdp = db_instance.get_tdp_by_id(tdp_id)
-#     print("[app] Retrieving paragraphs for TDP", tdp.filename)
-#     paragraphs = db_instance.get_paragraphs_by_tdp(Database.TDP_db(id=tdp_id))
-#     return [ paragraph.to_json_dict() for paragraph in paragraphs ]
-
-
-# @flask_app.get("/tdps")
-# def get_tdps():
-#     groupby = request.args.get('groupby')
-#     return tdps(request, groupby)
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

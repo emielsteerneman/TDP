@@ -11,12 +11,41 @@ from pinecone import Pinecone, Vector, SparseValues, UpsertResponse, QueryRespon
 from scipy.sparse import coo_array
 # Local libraries
 from data_access.vector.client_interface import ClientInterface
+from data_access.vector.vector_filter import VectorFilter
 from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
 from data_structures.Sentence import Sentence
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 from uniqid import uniqid
+
+def filter_to_dict(filter:VectorFilter=None) -> dict:
+    d = {}
+
+    if filter is None:
+        return d
+
+    if filter.team is not None: d["team"] = filter.team
+    
+    if filter.year is not None:
+        d["year"] = filter.year
+    elif filter.year_min is not None or filter.year_max is not None:
+        d["year"] = {}
+        if filter.year_min is not None: d["year"]["$gte"] = filter.year_min
+        if filter.year_max is not None: d["year"]["$lte"] = filter.year_max
+
+    if filter.league is not None: 
+        d["league"] = filter.league
+    elif filter.leagues is not None: 
+        d["league"] = { "$in": filter.leagues }
+    
+    print()
+    print("filter_to_dict")
+    print(filter)
+    print(d)
+    print()
+
+    return d
 
 class PineconeClient(ClientInterface):
 
@@ -78,7 +107,7 @@ class PineconeClient(ClientInterface):
 
         self.index_paragraph.upsert([vector])
 
-    def query_paragraphs(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter=None, include_metadata=True) -> list[Paragraph]:
+    def query_paragraphs(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter:VectorFilter=None, include_metadata=True) -> list[Paragraph]:
         logger.info(f"Querying index {self.INDEX_NAME_PARAGRAPH}")
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
@@ -89,7 +118,7 @@ class PineconeClient(ClientInterface):
             sparse_vector={'indices':sparse_vector.col.tolist(), 'values':sparse_vector.data.tolist()},
             top_k=limit,
             include_metadata=include_metadata,
-            filter=filter
+            filter=filter_to_dict(filter)
         )
         t_stop = time.time()
 
@@ -172,7 +201,7 @@ class PineconeClient(ClientInterface):
 
         self.index_question.upsert([vector])
 
-    def query_questions(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter=None, include_metadata=True) -> list[ParagraphChunk]:
+    def query_questions(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter:VectorFilter=None, include_metadata=True) -> list[ParagraphChunk]:
         logger.info(f"Querying index {self.INDEX_NAME_QUESTION}")
         if self.index_question is None:
             self.index_question = self.client.Index(self.INDEX_NAME_QUESTION)
@@ -183,7 +212,7 @@ class PineconeClient(ClientInterface):
             sparse_vector={'indices':sparse_vector.col.tolist(), 'values':sparse_vector.data.tolist()},
             top_k=limit,
             include_metadata=include_metadata,
-            filter=filter
+            filter=filter_to_dict(filter)
         )
         t_stop = time.time()
 

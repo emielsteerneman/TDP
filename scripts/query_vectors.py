@@ -10,6 +10,7 @@ import numpy as np
 # Local libraries
 from data_access.llm.llm_client import OpenAIClient
 from data_access.vector.pinecone_client import PineconeClient
+from data_access.vector.vector_filter import VectorFilter
 from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
 from data_structures.TDPName import TDPName
@@ -23,15 +24,15 @@ print(f"Paragraphs: {vector_client.count_paragraphs()}    Questions: {vector_cli
 
 def summarize_by_sentence(text:str, keywords:list[str]) -> str:
     
-    print("Keywords:", keywords)
-    print(text)
+    # print("Keywords:", keywords)
+    # print(text)
 
     keywords = [ _.lower() for _ in keywords ]
     sentences = text.split(".")
 
     sentences = [ _.strip() for _ in sentences if any([k in _ for k in keywords]) ]
-    print("---")
-    print(" ... ".join(sentences))
+    # print("---")
+    # print(" ... ".join(sentences))
 
     return " ... ".join(sentences)
 
@@ -47,6 +48,11 @@ while True:
         # "team":"RoboTeam_Twente",
         # "year":2022
     }
+
+    filter = VectorFilter(
+        year_min=2015,
+        leagues=["soccer_smallsize", "soccer_midsize"]
+    )
 
     dense_vector = embeddor.embed_dense_openai(query)
     sparse_vector, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
@@ -109,14 +115,14 @@ while True:
     # Sort paragraphs by score, high to low
     pid_paragraphs = sorted(paragraphs.items(), key=lambda x: x[1]['score'], reverse=True)
 
-    for pid, p in pid_paragraphs:
-        print()
-        print(pid, '-', p['chunks'][0]['paragraph_title'])
-        print(p['score'])
-        for q in p['questions']:
-            print("    ", q['question'])
-        for c in p['chunks']:
-            print("    ", int(c['chunk_sequence_id']))
+    # for pid, p in pid_paragraphs:
+    #     print()
+    #     print(pid, '-', p['chunks'][0]['paragraph_title'])
+    #     print(p['score'])
+    #     for q in p['questions']:
+    #         print("    ", q['question'])
+    #     for c in p['chunks']:
+    #         print("    ", int(c['chunk_sequence_id']))
 
     SOURCES = ""
 
@@ -154,8 +160,8 @@ while True:
 
         SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
         SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
-        SOURCES += f"TEXT : | {reconstructed_text} |\n"
-        SOURCES += f"SUMMARY : | {summarize_by_sentence(reconstructed_text, keywords )} |\n"
+        # SOURCES += f"TEXT : | {reconstructed_text} |\n"
+        # SOURCES += f"SUMMARY : | {summarize_by_sentence(reconstructed_text, keywords )} |\n"
 
     print("\n\n\n")
     print(SOURCES)
@@ -164,6 +170,7 @@ while True:
     with open("sources.txt", "w") as f:
         f.write(SOURCES)
 
+    continue
     print("\n\n\n======== LLM RESPONSE =========\n\n\n")
     llm_response = llm_client.answer_question(question=query, source_text=SOURCES, model="gpt-4o")
     print(llm_response)
