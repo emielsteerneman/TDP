@@ -84,8 +84,6 @@ def api_tdp_image(tdp_name:str, image_idx:int):
 
 @flask_app.route("/api/query")
 def api_query():
-    from search import search
-    # Get query from URL
     query = request.args.get('query')
     filter = VectorFilter.from_dict(dict(request.args))
 

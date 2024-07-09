@@ -58,7 +58,7 @@ def api_tdps() -> str:
 def api_query(query:str, filter:VectorFilter) -> str:
     _, _, vector_client = startup.get_clients()
 
-    paragraphs, keywords = search(vector_client, query, compress_text=True)
+    paragraphs, keywords = search(vector_client, query, filter=filter, compress_text=True)
     paragraphs_json = []
     for paragraph in paragraphs:
         paragraphs_json.append({
