@@ -100,7 +100,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
 
     logger.debug(f"Query: {query}")
     logger.debug(f"Keywords: {keywords}")
-    logger.debug(f"Filer: {filter}")
+    logger.debug(f"Filter: {filter}")
 
     # Get paragraphs and questions from vector database
     response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=15, filter=filter)

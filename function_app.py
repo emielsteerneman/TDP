@@ -12,6 +12,7 @@ from data_access.vector.vector_filter import VectorFilter
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 import startup
+import time
 
 load_dotenv()
 
@@ -89,12 +90,15 @@ def api_tdp_html(req: func.HttpRequest) -> func.HttpResponse:
     
 @azure_app.route("query")
 def api_query(req: func.HttpRequest):
-    from search import search
     query = req.params.get('query')
     filter = VectorFilter.from_dict(dict(req.params))
-
-    json_response:str = app.api_query(query, filter)
     
+    t_start = time.time()
+    json_response:str = app.api_query(query, filter)
+    duration_ms = (time.time() - t_start) * 1000
+
+    logger.info(f"duration={duration_ms} query={query}")
+
     headers = { 
         "Access-Control-Allow-Origin": "*",
         "Cache-Control": "max-age=604800, public"
