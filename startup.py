@@ -8,31 +8,34 @@ load_dotenv()
 # Local libraries
 from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import AzureFileClient, LocalFileClient
+from data_access.vector.pinecone_client import PineconeClient
 from MyLogger import logger
 
 metadata_client = None
 file_client = None
+vector_client = None
 
-def get_clients() -> tuple[MongoDBClient, AzureFileClient|LocalFileClient]:
+def get_clients() -> tuple[MongoDBClient, AzureFileClient|LocalFileClient, PineconeClient]:
 
-    global metadata_client, file_client
+    global metadata_client, file_client, vector_client
 
-    if metadata_client is not None and file_client is not None:
-        return metadata_client, file_client
+    if metadata_client is not None and file_client is not None and vector_client is not None:
+        return metadata_client, file_client, vector_client
 
     ENVIRONMENT:str = get_environment()
     logger.info(f"ENVIRONMENT : {ENVIRONMENT}")
 
     if ENVIRONMENT == "LOCAL":
-        metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
         file_client = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
     elif ENVIRONMENT == "AZURE":
-        metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
         file_client = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
+
+    metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
+    vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 
     logger.info("Clients initialized successfully")
 
-    return metadata_client, file_client
+    return metadata_client, file_client, vector_client
 
 def get_environment() -> str:
     ENVIRONMENT = os.getenv("ENVIRONMENT")

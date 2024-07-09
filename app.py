@@ -3,6 +3,9 @@ import json
 # Third party libraries
 # Local libraries
 import startup
+from search import search
+
+from data_access.vector.vector_filter import VectorFilter
 
 def reduce_tdps(tdps):
     league_map, league_map_inverse = {}, {}
@@ -42,7 +45,7 @@ def reduce_tdps(tdps):
 
 def api_tdps() -> str:
 
-    metadata_client, file_client = startup.get_clients()
+    metadata_client, _, _ = startup.get_clients()
 
     tdps = metadata_client.find_tdps()
 
@@ -52,3 +55,24 @@ def api_tdps() -> str:
     
     return json.dumps(response)
 
+def api_query(query:str, filter:VectorFilter) -> str:
+    _, _, vector_client = startup.get_clients()
+
+    paragraphs, keywords = search(vector_client, query, compress_text=True)
+    paragraphs_json = []
+    for paragraph in paragraphs:
+        paragraphs_json.append({
+            'tdp_name': paragraph.tdp_name.to_dict(),
+            'title': paragraph.text_raw,
+            'content': paragraph.content_raw(),
+            'questions': paragraph.questions,
+        })
+
+    result = {
+        'paragraphs': paragraphs_json,
+        'keywords': keywords
+    }
+
+    json_response = json.dumps(result)
+
+    return json_response

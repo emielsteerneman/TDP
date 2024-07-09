@@ -8,47 +8,47 @@ from azure import functions as func
 import app
 from data_access.metadata.metadata_client import MongoDBClient
 from data_access.vector.pinecone_client import PineconeClient
+from data_access.vector.vector_filter import VectorFilter
 from data_structures.TDPName import TDPName
 from MyLogger import logger
 import startup
-
-print("Running...")
 
 load_dotenv()
 
 azure_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-metadata_client, file_client = startup.get_clients()
-vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
-
+metadata_client, file_client, vector_client = startup.get_clients()
 
 # https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=linux%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python
 
 @azure_app.route('metadata/find')
 def metadata_find(req: func.HttpRequest):
+    global metadata_client
+    
     team = req.params.get('team')
     year = int(req.params.get('year')) if req.params.get('year') else None
     league = req.params.get('league')
 
-    # if team is None: team = "RoboTeam_Twente"
-    # if year is None: year = 2019
-    # if league is None: league = "soccer_smallsize"
-
-    metadata_client = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
     tdps = metadata_client.find_tdps(team=team, year=year, league=league)
 
     logger.info(f"Found {len(tdps)} TDPs for team={team}, year={year}, league={league}")
 
     json_response = json.dumps([ tdp.to_dict() for tdp in tdps ])
 
-    headers = { "Cache-Control": "max-age=604800, public" }
+    headers = { 
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "max-age=604800, public"
+    }
     
     return func.HttpResponse(json_response, mimetype="application/json", headers=headers)
 
 @azure_app.route('tdps')
 def api_tdps(req: func.HttpRequest):
     json_response:str = app.api_tdps()
-    headers = { "Access-Control-Allow-Origin": "*" }
+    headers = { 
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "max-age=604800, public"     
+    }
     return func.HttpResponse(json_response, mimetype="application/json", headers=headers)
 
 @azure_app.route("tdp/{tdp_name}/pdf")
@@ -91,47 +91,13 @@ def api_tdp_html(req: func.HttpRequest) -> func.HttpResponse:
 def api_query(req: func.HttpRequest):
     from search import search
     query = req.params.get('query')
+    filter = VectorFilter.from_dict(dict(req.params))
 
-    """
-    Flask equivalent
-
-    paragraphs, keywords = search(vector_client, query, compress_text=True)
-    paragraphs_json = []
-    for paragraph in paragraphs:
-        paragraphs_json.append({
-            'tdp_name': paragraph.tdp_name.to_dict(),
-            'title': paragraph.text_raw,
-            'content': paragraph.content_raw(),
-            'questions': paragraph.questions,
-        })
-
-    result = {
-        'paragraphs': paragraphs_json,
-        'keywords': keywords
-    }    
-
-    flask_response = Response(json.dumps(result))
-    flask_response.headers['Content-Type'] = "application/json"
-    # flask_response.headers['Cache-Control'] = "max-age=604800, public"
-    return flask_response
-
-    """
-
-    paragraphs, keywords = search(vector_client, query, compress_text=True)
-    paragraphs_json = []
-    for paragraph in paragraphs:
-        paragraphs_json.append({
-            'tdp_name': paragraph.tdp_name.to_dict(),
-            'title': paragraph.text_raw,
-            'content': paragraph.content_raw(),
-            'questions': paragraph.questions,
-        })
-
-    result = {
-        'paragraphs': paragraphs_json,
-        'keywords': keywords
+    json_response:str = app.api_query(query, filter)
+    
+    headers = { 
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "max-age=604800, public"
     }
-
-    json_response = json.dumps(result)
-    headers = { "Access-Control-Allow-Origin": "*" }
+    
     return func.HttpResponse(json_response, mimetype="application/json", headers=headers)

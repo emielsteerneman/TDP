@@ -25,14 +25,19 @@ def filter_to_dict(filter:VectorFilter=None) -> dict:
     if filter is None:
         return d
 
-    if filter.team is not None: d["team"] = filter.team
+    if filter.team is not None: 
+        d["team"] = filter.team
+    elif filter.teams is not None: 
+        d["team"] = { "$in": filter.teams }
     
     if filter.year is not None:
         d["year"] = filter.year
     elif filter.year_min is not None or filter.year_max is not None:
         d["year"] = {}
-        if filter.year_min is not None: d["year"]["$gte"] = filter.year_min
-        if filter.year_max is not None: d["year"]["$lte"] = filter.year_max
+        if filter.year_min is not None: 
+            d["year"]["$gte"] = filter.year_min
+        if filter.year_max is not None: 
+            d["year"]["$lte"] = filter.year_max
 
     if filter.league is not None: 
         d["league"] = filter.league

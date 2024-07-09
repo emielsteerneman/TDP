@@ -8,7 +8,7 @@ import time
 # Third party libraries
 # Local libraries
 import startup
-metadata_client, file_client = startup.get_clients()
+metadata_client, file_client, _ = startup.get_clients()
 
 pdfs, _ = file_client.list_pdfs()
 
