@@ -112,3 +112,27 @@ def api_query(req: func.HttpRequest):
     }
     
     return func.HttpResponse(json_response, mimetype="application/json", headers=headers)
+
+@azure_app.route("query/llm")
+def api_query_llm(req: func.HttpRequest):
+    t_start = time.time()
+
+    query = req.params.get('query')
+    filter = VectorFilter.from_dict(dict(req.params))
+
+    try:
+        json_response:str = app.api_query(query, filter)
+    except Exception as e:
+        json_response = str(e)
+        headers = { "Access-Control-Allow-Origin": "*" }
+        return func.HttpResponse(json_response, status_code=500, mimetype="application/json", headers=headers)
+    finally:
+        duration_ms = (time.time() - t_start) * 1000
+        logger.info(f"duration={duration_ms} query={query}")
+
+    headers = { 
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "max-age=604800, public"
+    }
+    
+    return func.HttpResponse(json_response, mimetype="application/json", headers=headers)
