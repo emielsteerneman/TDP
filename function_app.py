@@ -121,7 +121,7 @@ def api_query_llm(req: func.HttpRequest):
     filter = VectorFilter.from_dict(dict(req.params))
 
     try:
-        json_response:str = app.api_query(query, filter)
+        json_response:str = app.api_query_llm(query, filter)
     except Exception as e:
         json_response = str(e)
         headers = { "Access-Control-Allow-Origin": "*" }
