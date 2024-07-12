@@ -98,7 +98,11 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None) -> tu
         llm_input += f"SOURCE : | team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
         llm_input += f"TEXT : | {paragraph.content_raw()} |"
 
+    # llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-3.5-turbo")
     llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-4o")
+
+    print("llm_input")
+    print(llm_input)
 
     return llm_input, llm_response    
 
@@ -229,6 +233,8 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
     # pid_paragraph: { score, questions:[], chunks:[] }
 
     for pid, p in pid_paragraphs:
+
+        print(p['score'])
 
         first_chunk = p['chunks'][0]
         tdp_name = TDPName.from_string(first_chunk['tdp_name'])

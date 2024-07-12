@@ -4,6 +4,7 @@ import json
 # Local libraries
 import startup
 from search import search, llm
+from openai import RateLimitError
 
 from data_access.vector.vector_filter import VectorFilter
 
@@ -58,7 +59,19 @@ def api_tdps() -> str:
 def api_query(query:str, filter:VectorFilter) -> str:
     _, _, vector_client = startup.get_clients()
 
-    paragraphs, keywords = search(vector_client, query, filter=filter, compress_text=True)
+    try:
+        paragraphs, keywords = search(vector_client, query, filter=filter, compress_text=True)
+    except RateLimitError as e:
+        raise Exception(json.dumps({
+            'error': 'RateLimitError',
+            'message': 'OpenAI wants more money!'
+        }))
+    except Exception as e:
+        raise Exception(json.dumps({
+            'error': 'Exception',
+            'message': str(e)
+        }))
+
     paragraphs_json = []
     for paragraph in paragraphs:
         paragraphs_json.append({

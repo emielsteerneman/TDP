@@ -2,7 +2,7 @@
 import os
 # Third party libraries
 import numpy as np
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from pinecone_text.sparse import BM25Encoder
 # import pymilvus
 # import pymilvus.model
@@ -45,14 +45,19 @@ class Embeddor:
         
         is_str:bool = isinstance(text, str)
 
-        if is_str: 
-            response = self.openai_client.embeddings.create(input = [text], model=model)
-            self.total_costs += response.usage.prompt_tokens * self.api_costs[response.model]["input"]            
-            return np.array(response.data[0].embedding)
-        else:
-            response = self.openai_client.embeddings.create(input = text, model=model)
-            self.total_costs += response.usage.prompt_tokens * self.api_costs[response.model]["input"]
-            return np.array([ _.embedding for _ in response.data ])
+        try:
+            if is_str: 
+                response = self.openai_client.embeddings.create(input = [text], model=model)
+                self.total_costs += response.usage.prompt_tokens * self.api_costs[response.model]["input"]            
+                return np.array(response.data[0].embedding)
+            else:
+                response = self.openai_client.embeddings.create(input = text, model=model)
+                self.total_costs += response.usage.prompt_tokens * self.api_costs[response.model]["input"]
+                return np.array([ _.embedding for _ in response.data ])
+        except RateLimitError as e:
+            logger.error(f"Rate limit error: {e}")
+            raise e
+            
 
     def embed_dense_milvus(self, text:str | list[str]) -> np.ndarray:
         # https://milvus.io/api-reference/pymilvus/v2.4.x/EmbeddingModels/SentenceTransformerEmbeddingFunction/SentenceTransformerEmbeddingFunction.md

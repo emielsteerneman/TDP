@@ -87,8 +87,15 @@ def api_query():
     query = request.args.get('query')
     filter = VectorFilter.from_dict(dict(request.args))
 
-    json_response:str = app.api_query(query, filter)
-    
+    try:
+        json_response = app.api_query(query, filter)
+    except Exception as e:
+        json_response = str(e)
+        flask_response = Response(json_response)
+        flask_response.headers['Content-Type'] = "application/json"
+        flask_response.status_code = 500
+        return flask_response
+
     flask_response = Response(json_response)
     flask_response.headers['Content-Type'] = "application/json"
     flask_response.headers['Cache-Control'] = "max-age=604800, public"

@@ -90,14 +90,21 @@ def api_tdp_html(req: func.HttpRequest) -> func.HttpResponse:
     
 @azure_app.route("query")
 def api_query(req: func.HttpRequest):
+    
+    t_start = time.time()
+
     query = req.params.get('query')
     filter = VectorFilter.from_dict(dict(req.params))
     
-    t_start = time.time()
-    json_response:str = app.api_query(query, filter)
-    duration_ms = (time.time() - t_start) * 1000
-
-    logger.info(f"duration={duration_ms} query={query}")
+    try:
+        json_response:str = app.api_query(query, filter)
+    except Exception as e:
+        json_response = str(e)
+        headers = { "Access-Control-Allow-Origin": "*" }
+        return func.HttpResponse(json_response, status_code=500, mimetype="application/json", headers=headers)
+    finally:
+        duration_ms = (time.time() - t_start) * 1000
+        logger.info(f"duration={duration_ms} query={query}")
 
     headers = { 
         "Access-Control-Allow-Origin": "*",

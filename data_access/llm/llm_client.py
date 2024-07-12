@@ -86,7 +86,7 @@ class OpenAIClient(LLMClient):
             logger.error(f"Failed to decode response from OpenAI: {response_text}")
             return {}
 
-    def answer_question(self, question:str, source_text:str, model="gpt-3.5-turbo-0125") -> str:
+    def answer_question(self, question:str, source_text:str, model="gpt-3.5-turbo") -> str:
         """
         Ask a question about a source text using OpenAI's LLM.
         """
@@ -99,6 +99,9 @@ class OpenAIClient(LLMClient):
         f"Your answer should be concise and to the point. If you don't know the answer, you can say 'I don't know'."
         f"The answer should encourage the participant to do its own research. Maybe ask a question back to the participant or suggest follow-up research. "
         f"Again, it is absolutely important to always cite the source of your information. Always provide the paragraph title."
+
+        if "3.5" in model:
+            source_text = source_text[:30000]
 
         messages = [
             {
