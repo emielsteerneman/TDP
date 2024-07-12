@@ -89,7 +89,18 @@ def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
 
     return " ... ".join(sentences)
 
+def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None) -> tuple[str, str]:
+    paragraphs, _ = search(vector_client, query, filter)
 
+    llm_input = ""
+    for paragraph in paragraphs:
+        llm_input += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
+        llm_input += f"SOURCE : | team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
+        llm_input += f"TEXT : | {paragraph.content_raw()} |"
+
+    llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-4o")
+
+    return llm_input, llm_response    
 
 def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, compress_text=False) -> tuple[list[Paragraph], list[str]]:
     if query is None or query == "": return [], []
@@ -137,7 +148,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
 
     paragraphs = {}
 
-    # print("================ PARAGRAPH CHUNKS ================")
+    # ================ PARAGRAPH CHUNKS ================
     # Get paragraph chunks
     paragraph_chunk_matches = response_paragraph_chunks['matches'] # [ id, metadata, score, values ]
     # Get the questions that are associated with the paragraph chunks
@@ -147,8 +158,10 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
         logger.debug("No matches found. Returning empty results")        
         return [], []
 
+    # Get all questions from all paragraph chunks
     paragraph_chunk_questions = vector_client.get_questions_metadata_by_id(vector_ids) # [ metadata ]
     
+    # For all paragraph chunks, prepare or add to the paragraph
     for i_match, match in enumerate(paragraph_chunk_matches):
         metadata = match['metadata']
         paragraph_id = f"{metadata['tdp_name']}__{int(metadata['paragraph_sequence_id'])}"
@@ -160,17 +173,21 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
         paragraphs[paragraph_id]['score'] += match['score']
         paragraphs[paragraph_id]['chunks'].append(metadata)
 
+    # Add all questions to its paragraph
     for i_question, metadata in enumerate(paragraph_chunk_questions):
         paragraph_id = f"{metadata['tdp_name']}__{int(metadata['paragraph_sequence_id'])}"
         paragraphs[paragraph_id]['questions'].append(metadata)
 
-    # print("================ QUESTIONS ================")
+    # ================ QUESTIONS ================
     # Get questions
     question_matches = response_questions['matches'] # [ id, metadata, score, values ]
     # Get the paragraph chunks that are associated with the questions
     vector_ids = [match['id'] for match in question_matches]
+    
+    # Get all paragraph chunks from all questions
     question_paragraph_chunks = vector_client.get_paragraph_chunks_metadata_by_id(vector_ids) # [ metadata ]
 
+    # For all paragraph chunks, prepare or add to the paragraph
     for i_paragraph, metadata in enumerate(question_paragraph_chunks):
         # print(f"{i_paragraph:2} ({question_matches[i_paragraph]['score']:.2f}): {metadata['text']}")
         paragraph_id = f"{metadata['tdp_name']}__{int(metadata['paragraph_sequence_id'])}"
@@ -181,6 +198,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
         }
         paragraphs[paragraph_id]['chunks'].append(metadata)
 
+    # Add all questions to its paragraph
     for i_question, match in enumerate(question_matches):
         metadata = match['metadata']
         paragraph_id = f"{metadata['tdp_name']}__{int(metadata['paragraph_sequence_id'])}"
@@ -188,19 +206,21 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
         paragraphs[paragraph_id]['questions'].append(metadata)
 
 
-    # print("================ POST PROCESS ================")
+
+    # ================ POST PROCESS ================
+
+    """
+    paragraphs = {
+        "tdp_name__paragraph_sequence_id": {
+            'score': float,
+            'questions': [ { question, ... } ],
+            'chunks': [ { text, ... } ]
+        }
+    }
+    """
 
     # Sort paragraphs by score, high to low
     pid_paragraphs = sorted(paragraphs.items(), key=lambda x: x[1]['score'], reverse=True)
-
-    # for pid, p in pid_paragraphs:
-    #     print()
-    #     print(pid, '-', p['chunks'][0]['paragraph_title'])
-    #     print(p['score'])
-    #     for q in p['questions']:
-    #         print("    ", q['question'])
-    #     for c in p['chunks']:
-    #         print("    ", int(c['chunk_sequence_id']))
 
     SOURCES = ""
 
@@ -215,17 +235,20 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
         paragraph_title = first_chunk['paragraph_title']
         paragraph_sequence_id = int(first_chunk['paragraph_sequence_id'])
 
+        # Create paragraph object
         paragraph = Paragraph(
             tdp_name=tdp_name,
             text_raw=paragraph_title,
             sequence_id=paragraph_sequence_id
         )
         
+        # Get a unique list of chunks and sort by chunk_sequence_id
         chunks_uniq = {} # { chunk_sequence_id: chunk }
         for chunk in p['chunks']: chunks_uniq[int(chunk['chunk_sequence_id'])] = chunk
-        csid_chunk = sorted(chunks_uniq.items(), key=lambda x: x[0])
+        csid_chunk = sorted(chunks_uniq.items(), key=lambda x: x[0]) # [ (chunk_sequence_id, chunk) ]
         chunks = [_[1] for _ in csid_chunk]
-     
+
+        # Convert to ParagraphChunk objects
         chunks = list(map(lambda c: ParagraphChunk(
             paragraph=paragraph,
             text=c['text'],
@@ -233,34 +256,25 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
             start=int(c['start']),
             end=int(c['end']),
         ), chunks))
-            
+        
+        # Reconstruct the paragraph text
         reconstructed_text = reconstruct_paragraph_text(chunks)
 
+        # Compress the text
         if compress_text:
             reconstructed_text = summarize_by_sentence(reconstructed_text, keywords)
 
-        # TODO fix ugly hack
+        # TODO fix ugly hack. Paragraph with single sentence, with that single sentence being all the reconstructed text
         paragraph.sentences.append(Sentence(text_raw=reconstructed_text))
 
+        # Get a unique list of questions and add to paragraph
         questions = list(set([ q_metadata['question'] for q_metadata in p['questions'] ] ))
         paragraph.questions = questions
 
         reconstructed_paragraphs.append(paragraph)
-
-        # print("\n\n\n\n=============== NEW PARAGRAPH ================")
-        # print(f"SOURCE: team={tdp_name.team_name.name} year={tdp_name.year}")
-        # print(f"TEXT: | {reconstructed_text} |")
 
         # SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
         # SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
         # SOURCES += f"TEXT : | {reconstructed_text} |"
     
     return reconstructed_paragraphs, keywords
-
-    print("\n\n\n")
-    print(SOURCES)
-    print("\n\n\n") 
-
-    print("\n\n\n======== LLM RESPONSE =========\n\n\n")
-    llm_response = llm_client.answer_question(question=query, source_text=SOURCES, model="gpt-4o")
-    print(llm_response)

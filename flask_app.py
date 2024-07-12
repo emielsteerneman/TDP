@@ -95,5 +95,18 @@ def api_query():
     
     return flask_response
 
+@flask_app.route("/api/query/llm")
+def api_query_llm():
+    query = request.args.get('query')
+    filter = VectorFilter.from_dict(dict(request.args))
+
+    json_response:str = app.api_query_llm(query, filter)
+    
+    flask_response = Response(json_response)
+    flask_response.headers['Content-Type'] = "application/json"
+    flask_response.headers['Cache-Control'] = "max-age=604800, public"
+    
+    return flask_response
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

@@ -3,7 +3,7 @@ import json
 # Third party libraries
 # Local libraries
 import startup
-from search import search
+from search import search, llm
 
 from data_access.vector.vector_filter import VectorFilter
 
@@ -74,5 +74,17 @@ def api_query(query:str, filter:VectorFilter) -> str:
     }
 
     json_response = json.dumps(result)
+
+    return json_response
+
+def api_query_llm(query:str, filter:VectorFilter) -> str:
+    _, _, vector_client = startup.get_clients()
+
+    llm_input, llm_response = llm(vector_client, query, filter)
+
+    json_response = json.dumps({
+        'llm_input': llm_input,
+        'llm_response': llm_response
+    })
 
     return json_response
