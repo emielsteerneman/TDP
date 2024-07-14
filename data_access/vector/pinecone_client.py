@@ -44,12 +44,6 @@ def filter_to_dict(filter:VectorFilter=None) -> dict:
     elif filter.leagues is not None: 
         d["league"] = { "$in": filter.leagues }
     
-    print()
-    print("filter_to_dict")
-    print(filter)
-    print(d)
-    print()
-
     return d
 
 class PineconeClient(ClientInterface):

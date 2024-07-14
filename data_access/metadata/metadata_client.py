@@ -66,7 +66,6 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
     
     def __init__(self, connection_string:str):
         self.client = MongoClient(connection_string, serverSelectionTimeoutMS = 3000)
-        MongoClient()
         self.ensure_collection_tdp()
         self.ensure_collection_paragraph()
 

@@ -234,7 +234,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
 
     for pid, p in pid_paragraphs:
 
-        print(p['score'])
+        # print(p['score'])
 
         first_chunk = p['chunks'][0]
         tdp_name = TDPName.from_string(first_chunk['tdp_name'])
