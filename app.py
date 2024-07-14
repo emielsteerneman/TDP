@@ -7,6 +7,7 @@ from search import search, llm
 from openai import RateLimitError
 
 from data_access.vector.vector_filter import VectorFilter
+from MyLogger import logger
 
 def reduce_tdps(tdps):
     league_map, league_map_inverse = {}, {}
@@ -57,47 +58,86 @@ def api_tdps() -> str:
     return json.dumps(response)
 
 def api_query(query:str, filter:VectorFilter) -> str:
-    _, _, vector_client = startup.get_clients()
-
+    
     try:
+        vector_client = startup.get_vector_client()
+        cache_client = startup.get_cache_client()
+
+        cache_key = query.lower() + "_" + str(filter)
+        
+        cache_hit, timestamp = cache_client.find_query(cache_key)
+        if cache_hit is not None:
+            return cache_hit
+        
         paragraphs, keywords = search(vector_client, query, filter=filter, compress_text=True)
+
+        paragraphs_json = []
+        for paragraph in paragraphs:
+            paragraphs_json.append({
+                'tdp_name': paragraph.tdp_name.to_dict(),
+                'title': paragraph.text_raw,
+                'content': paragraph.content_raw(),
+                'questions': paragraph.questions,
+            })
+
+        result = {
+            'paragraphs': paragraphs_json,
+            'keywords': keywords
+        }
+
+        json_response = json.dumps(result)
+
+        cache_client.insert_query(cache_key, json_response)
+
+        return json_response
+    
     except RateLimitError as e:
         raise Exception(json.dumps({
             'error': 'RateLimitError',
             'message': 'OpenAI wants more money!'
         }))
+    
     except Exception as e:
+        logger.error(str(e))
         raise Exception(json.dumps({
             'error': 'Exception',
             'message': str(e)
         }))
 
-    paragraphs_json = []
-    for paragraph in paragraphs:
-        paragraphs_json.append({
-            'tdp_name': paragraph.tdp_name.to_dict(),
-            'title': paragraph.text_raw,
-            'content': paragraph.content_raw(),
-            'questions': paragraph.questions,
-        })
-
-    result = {
-        'paragraphs': paragraphs_json,
-        'keywords': keywords
-    }
-
-    json_response = json.dumps(result)
-
-    return json_response
 
 def api_query_llm(query:str, filter:VectorFilter) -> str:
-    _, _, vector_client = startup.get_clients()
+    try:
+        vector_client = startup.get_vector_client()
+        cache_client = startup.get_cache_client()
 
-    llm_input, llm_response = llm(vector_client, query, filter)
+        cache_key = query.lower() + "_" + str(filter)
+        
+        cache_hit, timestamp = cache_client.find_llm(cache_key)
+        if cache_hit is not None:
+            return cache_hit
+        
+        llm_input, llm_response = llm(vector_client, query, filter)
 
-    json_response = json.dumps({
-        'llm_input': llm_input,
-        'llm_response': llm_response
-    })
+        result = {
+            'llm_input': llm_input,
+            'llm_response': llm_response
+        }
 
-    return json_response
+        json_response = json.dumps(result)
+
+        cache_client.insert_llm(cache_key, json_response)
+
+        return json_response
+    
+    except RateLimitError as e:
+        raise Exception(json.dumps({
+            'error': 'RateLimitError',
+            'message': 'OpenAI wants more money!'
+        }))
+    
+    except Exception as e:
+        logger.error(str(e))
+        raise Exception(json.dumps({
+            'error': 'Exception',
+            'message': str(e)
+        }))
