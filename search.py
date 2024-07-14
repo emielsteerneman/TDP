@@ -89,7 +89,7 @@ def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
 
     return " ... ".join(sentences)
 
-def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None) -> tuple[str, str]:
+def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model:str="gpt-3.5-turbo") -> tuple[str, str]:
     paragraphs, _ = search(vector_client, query, filter)
 
     llm_input = ""
@@ -98,11 +98,20 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None) -> tu
         llm_input += f"SOURCE : | team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
         llm_input += f"TEXT : | {paragraph.content_raw()} |"
 
-    # llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-3.5-turbo")
-    llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-4o")
+    max_tokens = 0
+    if "3.5" in model: max_tokens = 16000
+    if "4o" in model: max_tokens = 128000
 
-    print("llm_input")
-    print(llm_input)
+    if 0 < max_tokens:
+        n_tokens = embeddor.count_tokens(llm_input)
+        ratio = n_tokens / max_tokens
+        if 1 < ratio:
+            logger.warning(f"LLM input is too long ({n_tokens} tokens). Ratio: {ratio:.2f}. Pruning")
+            llm_input = llm_input[:int(0.95 * len(llm_input)/ratio)]
+            logger.warning(f"LLM input is now {embeddor.count_tokens(llm_input)} tokens")
+            
+    llm_response = llm_client.answer_question(question=query, source_text=llm_input, model=model)
+    # llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-4o")
 
     return llm_input, llm_response    
 
@@ -118,8 +127,8 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
     logger.debug(f"Filter: {filter}")
 
     # Get paragraphs and questions from vector database
-    response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=15, filter=filter)
-    response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=30, filter=filter)
+    response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=30, filter=filter)
+    response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=60, filter=filter)
 
     """ Paragraph metadata:
     
@@ -230,11 +239,12 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
 
     reconstructed_paragraphs: list[Paragraph] = []
 
-    # pid_paragraph: { score, questions:[], chunks:[] }
+    scores = [ f"{p['score']:.2f}" for pid, p in pid_paragraphs ]
+    print(f"Scores ({len(scores)}):", ", ".join(scores))
 
     for pid, p in pid_paragraphs:
 
-        # print(p['score'])
+        if p['score'] < 0.5: continue
 
         first_chunk = p['chunks'][0]
         tdp_name = TDPName.from_string(first_chunk['tdp_name'])

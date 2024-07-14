@@ -90,19 +90,28 @@ class OpenAIClient(LLMClient):
         """
         Ask a question about a source text using OpenAI's LLM.
         """
-        system_role = f"You are a helpful and knowledgeable assistant. You will be asked a question from a participant in "
-        f"the Robocup. The RoboCup is an international scientific initiative with the goal to advance the state of the art of intelligent robots. "
-        f"Every year, teams from all over the world compete in various robot leagues and robot soccer matches. The Robocup is all about "
-        f"sharing knowledge, collaboration, and friendly competition. You are a helpful and knowledgeable assistant. "
-        f"You will be given a question and a list of paragraphs. Answer the question based on the information in the paragraphs. "
-        f"Always cite the team and year and number of the source paragraph for every piece of information you provide. "
-        f"Your answer should be concise and to the point. If you don't know the answer, you can say 'I don't know'."
-        f"The answer should encourage the participant to do its own research. Maybe ask a question back to the participant or suggest follow-up research. "
-        f"Again, it is absolutely important to always cite the source of your information. Always provide the paragraph title."
 
-        if "3.5" in model:
-            source_text = source_text[:30000]
+        system_role = f"""
+You are a helpful and knowledgeable assistant. You will be asked a question from a participant in the RoboCup. The RoboCup is an international scientific initiative aimed at advancing the state of the art of intelligent robots. Teams from all over the world compete in various robot leagues and robot soccer matches. The RoboCup is about sharing knowledge, collaboration, and friendly competition.
 
+Your task:
+    * You will be given a question and a list of paragraphs.
+    * Answer the question based on the information in the paragraphs.
+    * Always cite the team, year, and number of the source paragraph for every piece of information you provide.
+    * Your answer should be concise and to the point.
+    * Encourage the participant to do their own research by asking follow-up questions or suggesting further reading.
+    * Be exhaustive and detailed. Provide as much information as possible.
+    * Respond in markdown format. 
+    * Format sources as follows: ### {{team}} {{year}}, {{league}} : {{paragraph title}}
+    * Add a paragraph ### further research
+    * Add a paragraph ### summary
+
+Question: "{question}"
+
+For each paragraph given, exhaustively answer the following question (ignore paragraphs without relevant data), and end with further research suggestions and a summary.
+"""
+
+        # Prepare the messages for the API call
         messages = [
             {
                 'role': 'system',
@@ -110,14 +119,17 @@ class OpenAIClient(LLMClient):
             },
             {
                 'role': 'user',
-                'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data), and end with a summary: " + question
-            },
-            {
-                'role': 'user',
                 'content': source_text
             }
         ]
 
+        # Add the question as a separate message to maintain clarity
+        messages.append({
+            'role': 'user',
+            'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data), and end with a summary: " + question
+        })
+
+        # The messages are now ready to be sent to the OpenAI API
         response = self.client.chat.completions.create(
             model=model,
             messages=messages
@@ -127,83 +139,10 @@ class OpenAIClient(LLMClient):
             cost_input = response.usage.prompt_tokens * self.api_costs[response.model]["input"]
             cost_output = response.usage.completion_tokens * self.api_costs[response.model]["output"]
             self.total_costs += cost_input + cost_output
-            logger.info(f"tokens in: {response.usage.prompt_tokens}, tokens out: {response.usage.completion_tokens}, cost in: {cost_input}, cost out: {cost_output}")
+            logger.info(f"Model: {model}, tokens in: {response.usage.prompt_tokens}, tokens out: {response.usage.completion_tokens}, cost in: {cost_input}, cost out: {cost_output}")
         else:
             logger.error(f"Model {response.model} not found in API costs")
 
         # print(response)
 
         return response.choices[0].message.content.strip()
-
-
-def main():
-    """
-    Main interaction loop for the chatbot.
-    """
-    print("Welcome to Chatbot! Type 'quit' to exit.")
-    
-    # Initialize the conversation history with a system message
-    conversation_history = [
-        {
-            'role': 'system',
-            'content': 'You are a helpful and knowledgeable assistant. When given a paragraph, you will provide a summary, a list of questions the paragraph would answer, and a list of keywords in JSON format.'
-        }
-    ]
-
-    user_input = ""
-    while user_input.lower() != "quit":
-        user_input = input("You: ")
-
-        if user_input.lower() != "quit":
-            response = chat_with_openai(user_input, conversation_history)
-            print(f"Chatbot: {response}")
-
-def chat_with_openai(prompt, conversation_history):
-    """
-    Sends the prompt to OpenAI API using the chat interface and gets the model's response.
-    Maintains conversation history for context.
-    """
-    # Add the user message to the conversation history
-    conversation_history.append({
-        'role': 'user',
-        'content': prompt
-    })
-
-    # Create the prompt for the specific task
-    specific_task_prompt = (
-        f"The source of the following paragraph is as follows: league='soccer smallsize', team='GreenTea', year='2023'."
-        f"Analyze the following paragraph and provide a response in JSON format with five fields: "
-        f"'summary' (a brief summary of the paragraph), "
-        f"'questions_specific' (a list of questions that the paragraph would answer, specifically for this team), "
-        f"'questions_generic' (a list of questions that the paragraph would answer, without referencing team specifics), "
-        f"'keywords' (a list of important keywords from the paragraph), "
-        f"'domain_specific' (a list of domain-specific words from the paragraph)."
-        f"\n\n"
-        f"Paragraph: {prompt}"
-    )
-
-    conversation_history.append({
-        'role': 'user',
-        'content': specific_task_prompt
-    })
-
-    response = openai_client.chat.completions.create(
-        model=model_name,
-        messages=conversation_history
-    )
-
-    # Extract the chatbot's message from the response.
-    chatbot_response = response.choices[0].message.content.strip()
-    
-    # Add the chatbot's response to the conversation history
-    conversation_history.append({
-        'role': 'assistant',
-        'content': chatbot_response
-    })
-
-    return chatbot_response
-
-if __name__ == "__main__":
-    model_name = "gpt-3.5-turbo-0125"
-    openai_client = OpenAI()
-    main()

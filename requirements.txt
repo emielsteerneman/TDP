@@ -14,6 +14,6 @@ python-dotenv
 #rank_bm25
 scipy
 #sentence-transformers
-#tiktoken
+tiktoken
 #weaviate-client
 #wget
