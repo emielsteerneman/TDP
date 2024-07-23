@@ -15,7 +15,7 @@ from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
 from data_structures.TDPName import TDPName
 from embedding.Embeddings import instance as embeddor
-from search import search
+from search import search, llm
 from text_processing.text_processing import reconstruct_paragraph_text
 from openai import RateLimitError
 
@@ -32,7 +32,7 @@ while True:
 
     filter = VectorFilter(
         year_min=2015,
-        leagues=["soccer_smallsize", "soccer_midsize"]
+        leagues=["soccer_smallsize"]
     )
 
     try:
@@ -41,7 +41,7 @@ while True:
         print("Rate limit error! Send more money to OpenAI!")
         continue
 
-    continue
-    print("\n\n\n======== LLM RESPONSE =========\n\n\n")
-    llm_response = llm_client.answer_question(question=query, source_text=SOURCES, model="gpt-4o")
-    print(llm_response)
+    # text_in, text_out = llm(vector_client, query, filter, model="gpt-3.5-turbo")
+    text_in, text_out = llm(vector_client, query, filter, model="gpt-4o-mini")
+
+    print(text_out)

@@ -89,7 +89,7 @@ def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
 
     return " ... ".join(sentences)
 
-def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model:str="gpt-3.5-turbo") -> tuple[str, str]:
+def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model:str="gpt-4o-mini") -> tuple[str, str]:
     paragraphs, _ = search(vector_client, query, filter)
 
     llm_input = ""

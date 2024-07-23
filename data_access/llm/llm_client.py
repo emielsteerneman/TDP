@@ -37,14 +37,22 @@ class OpenAIClient(LLMClient):
         "gpt-4o-2024-05-13": {
             "input": 5.00 / 1e6,
             "output": 15.00 / 1e6
-        }
+        },
+        "gpt-4o-mini": {
+            "input": 0.15 / 1e6,
+            "output": 0.60 / 1e6
+        },
+        "gpt-4o-mini-2024-07-18": {
+            "input": 0.15 / 1e6,
+            "output": 0.60 / 1e6
+        },
     }
 
     def __init__(self):
         self.client = OpenAI()
         self.total_costs = 0
 
-    def generate_paragraph_chunk_information(self, chunk:ParagraphChunk, n_questions:int=3, model="gpt-3.5-turbo-0125") -> dict:
+    def generate_paragraph_chunk_information(self, chunk:ParagraphChunk, n_questions:int=3, model="gpt-4o-mini") -> dict:
         """
         Generate information about a paragraph using OpenAI's LLM.
         """
@@ -86,7 +94,7 @@ class OpenAIClient(LLMClient):
             logger.error(f"Failed to decode response from OpenAI: {response_text}")
             return {}
 
-    def answer_question(self, question:str, source_text:str, model="gpt-3.5-turbo") -> str:
+    def answer_question(self, question:str, source_text:str, model="gpt-4o-mini") -> str:
         """
         Ask a question about a source text using OpenAI's LLM.
         """
@@ -108,7 +116,7 @@ Your task:
 
 Question: "{question}"
 
-For each paragraph given, exhaustively answer the following question (ignore paragraphs without relevant data), and end with further research suggestions and a summary.
+For each relevant paragraph given, exhaustively answer the following question (ignore paragraphs without relevant data), and end with further research suggestions and a summary.
 """
 
         # Prepare the messages for the API call
