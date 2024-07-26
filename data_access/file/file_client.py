@@ -121,11 +121,11 @@ class AzureFileClient(FileClient):
         return afn, ahash
 
     def delete_pdf(self, tdp_name:TDPName):
-        filepath = os.path.join(self.PDF_ROOT, tdp_name.to_filepath())
+        filepath = os.path.join(self.PDF_ROOT, tdp_name.to_filepath(ext=TDPName.PDF_EXT))
         self.container_client.delete_blob(filepath, delete_snapshots="include")
 
     def delete_html(self, tdp_name:TDPName):
-        filepath = os.path.join(self.HMTL_ROOT, tdp_name.to_filepath())
+        filepath = os.path.join(self.HMTL_ROOT, tdp_name.to_filepath(ext=TDPName.HTML_EXT))
         self.container_client.delete_blob(filepath, delete_snapshots="include")
 
     def pdf_exists(self, tdp_name:TDPName):

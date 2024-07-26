@@ -98,7 +98,7 @@ class OpenAIClient(LLMClient):
         """
         Ask a question about a source text using OpenAI's LLM.
         """
-
+        # * Format sources as follows: ### {{team}} {{year}}, {{league}} : {{paragraph title}}
         system_role = f"""
 You are a helpful and knowledgeable assistant. You will be asked a question from a participant in the RoboCup. The RoboCup is an international scientific initiative aimed at advancing the state of the art of intelligent robots. Teams from all over the world compete in various robot leagues and robot soccer matches. The RoboCup is about sharing knowledge, collaboration, and friendly competition.
 
@@ -110,14 +110,15 @@ Your task:
     * Encourage the participant to do their own research by asking follow-up questions or suggesting further reading.
     * Be exhaustive and detailed. Provide as much information as possible.
     * Respond in markdown format. 
-    * Format sources as follows: ### {{team}} {{year}}, {{league}} : {{paragraph title}}
-    * Add a paragraph ### further research
-    * Add a paragraph ### summary
+    * Add a paragraph ### further research.
+    * Add a paragraph ### summary.
+    * Respond with at least 7500 characters.
 
 Question: "{question}"
 
-For each relevant paragraph given, exhaustively answer the following question (ignore paragraphs without relevant data), and end with further research suggestions and a summary.
+exhaustively answer the following question (ignore paragraphs without relevant data), and end with further research suggestions and a summary.
 """
+# For each relevant paragraph given, exhaustively answer the following question (ignore paragraphs without relevant data), and end with further research suggestions and a summary.
 
         # Prepare the messages for the API call
         messages = [

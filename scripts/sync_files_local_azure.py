@@ -16,10 +16,11 @@ from data_structures.TDPName import TDPName
 local_file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
 azure_file_client:AzureFileClient = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
 
-def local_to_azure(is_pdf:bool=True, force:bool=False):
+def local_to_azure(is_pdf:bool=True, force:bool=False, dry=False):
     if is_pdf:
         az_files, az_hashes = azure_file_client.list_pdfs()
         local_files, local_hashes = local_file_client.list_pdfs()
+
     else:
         az_files, az_hashes = azure_file_client.list_htmls()
         local_files, local_hashes = local_file_client.list_htmls()
@@ -47,7 +48,7 @@ def local_to_azure(is_pdf:bool=True, force:bool=False):
             print(f"  Local: {tdpname_azure}")
 
             # Don't fix the conflict
-            if not force: continue
+            if dry or not force: continue
 
             # Fix the conflict by removing the file from Azure
             print(f"Deleting file with hash {local_hash} from Azure... {tdpname_azure}")
@@ -58,14 +59,15 @@ def local_to_azure(is_pdf:bool=True, force:bool=False):
 
         # File is not present in Azure, upload it
         print(f"Uploading file with hash {local_hash} to Azure... {tdpname_local}")
-        if is_pdf:
-            filepath = local_file_client.get_pdf(tdpname_local)
-            azure_file_client.store_pdf(filepath, tdpname_local)
-        else:
-            filepath = local_file_client.get_html(tdpname_local)
-            azure_file_client.store_html(filepath, tdpname_local)
+        if not dry:
+            if is_pdf:
+                filepath = local_file_client.get_pdf(tdpname_local)
+                azure_file_client.store_pdf(filepath, tdpname_local)
+            else:
+                filepath = local_file_client.get_html(tdpname_local)
+                azure_file_client.store_html(filepath, tdpname_local)
 
-def azure_to_local(is_pdf:bool=True, force:bool=False):
+def azure_to_local(is_pdf:bool=True, force:bool=False, dry=False):
     if is_pdf:
         az_files, az_hashes = azure_file_client.list_pdfs()
         local_files, local_hashes = local_file_client.list_pdfs()
@@ -96,7 +98,7 @@ def azure_to_local(is_pdf:bool=True, force:bool=False):
             print(f"  Local: {tdpname_local}")
 
             # Don't fix the conflict
-            if not force: continue
+            if dry or not force: continue
 
             # Fix the conflict by removing the file from local
             print(f"Deleting file with hash {az_hash} from local... {tdpname_local}")
@@ -107,12 +109,13 @@ def azure_to_local(is_pdf:bool=True, force:bool=False):
         
         # File is not present on local
         print(f"Downloading file with hash {az_hash} from Azure... {tdpname_azure}")
-        if is_pdf:
-            filebytes = azure_file_client.get_pdf_as_bytes(tdpname_azure)
-            local_file_client.store_pdf_from_bytes(filebytes, tdpname_azure)
-        else:
-            filebytes = azure_file_client.get_html_as_bytes(tdpname_azure)
-            local_file_client.store_html_from_bytes(filebytes, tdpname_azure)
+        if not dry:
+            if is_pdf:
+                filebytes = azure_file_client.get_pdf_as_bytes(tdpname_azure)
+                local_file_client.store_pdf_from_bytes(filebytes, tdpname_azure)
+            else:
+                filebytes = azure_file_client.get_html_as_bytes(tdpname_azure)
+                local_file_client.store_html_from_bytes(filebytes, tdpname_azure)
 
 def get_hashes_from_azure():
     print("Getting hashes from Azure...")
@@ -124,6 +127,12 @@ def get_hashes_from_azure():
     return output
 
 if __name__ == "__main__":
+    print("Utility to sync local to Azure or vice versa")
+    print("  pass --dry to not sync anything")
+    print()
+
+    dry = '--dry' in sys.argv
+
     while True:
         try:
             print("1. Sync local PDFs to Azure")
@@ -135,15 +144,16 @@ if __name__ == "__main__":
             force:bool = input("Force fix conflicts? (y/n): ") == "y"
 
             if choice == 1:
-                local_to_azure(is_pdf=True, force=force)
+                local_to_azure(is_pdf=True, force=force, dry=dry)
             elif choice == 2:
-                azure_to_local(is_pdf=True, force=force)
+                azure_to_local(is_pdf=True, force=force, dry=dry)
             elif choice == 3:
-                local_to_azure(is_pdf=False, force=force)
+                local_to_azure(is_pdf=False, force=force, dry=dry)
             elif choice == 4:
-                azure_to_local(is_pdf=False, force=force)
+                azure_to_local(is_pdf=False, force=force, dry=dry)
             else:
                 print("Invalid choice")
             print("\n")
-        except Exception:
-            print("\n")
+        except Exception as e:
+            # TODO remove try except?
+            raise e
