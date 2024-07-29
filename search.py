@@ -18,6 +18,7 @@ from data_structures.TDPName import TDPName
 from embedding.Embeddings import instance as embeddor
 from MyLogger import logger
 from text_processing.text_processing import reconstruct_paragraph_text
+import re
 
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 llm_client = OpenAIClient()
@@ -93,9 +94,18 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model
     paragraphs, _ = search(vector_client, query, filter)
 
     llm_input = ""
-    for paragraph in paragraphs:
+
+    sources = {}
+
+    llm_input += "\n"
+    for i_paragraph, paragraph in enumerate(paragraphs):
+        llm_input = f"SOURCE : [{i_paragraph}] = {paragraph.tdp_name.filename}\n"
+        sources[i_paragraph] = paragraph.tdp_name
+    llm_input += "\n"
+
+    for i_paragraph, paragraph in enumerate(paragraphs):
         llm_input += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
-        llm_input += f"SOURCE : | team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
+        llm_input += f"SOURCE : | id='[{i_paragraph}]', team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
         llm_input += f"TEXT : | {paragraph.content_raw()} |"
 
     max_tokens = 0
@@ -113,7 +123,16 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model
     llm_response = llm_client.answer_question(question=query, source_text=llm_input, model=model)
     # llm_response = llm_client.answer_question(question=query, source_text=llm_input, model="gpt-4o")
 
-    return llm_input, llm_response    
+    # Replace all [i] with the actual text in the llm_response
+    matches = [ m for m in re.finditer(r"\[\d+\]", llm_response) ]
+
+    for m in matches[::-1]:
+        start, end = m.span()
+        source:TDPName = sources[int(llm_response[start+1:end-1])]
+        url = f"[({source.team_name.name_pretty}, {source.year}, {source.league.name_pretty})](#/tdp/{source.filename}?ref=llm) "
+        llm_response = llm_response[:start] + url + llm_response[end:]
+
+    return llm_input, llm_response
 
 def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, compress_text=False) -> tuple[list[Paragraph], list[str]]:
     if query is None or query == "": return [], []
