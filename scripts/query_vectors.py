@@ -31,15 +31,15 @@ while True:
     if query == "": continue
 
     filter = VectorFilter(
-        year_min=2015,
+        # year_min=2015,
         leagues=["soccer_smallsize"]
     )
 
-    try:
-        paragraphs, keywords = search(vector_client, query, filter)
-    except RateLimitError as e:
-        print("Rate limit error! Send more money to OpenAI!")
-        continue
+    # try:
+    #     paragraphs, keywords = search(vector_client, query, filter)
+    # except RateLimitError as e:
+    #     print("Rate limit error! Send more money to OpenAI!")
+    #     continue
 
     # text_in, text_out = llm(vector_client, query, filter, model="gpt-3.5-turbo")
     text_in, text_out = llm(vector_client, query, filter, model="gpt-4o-mini")
