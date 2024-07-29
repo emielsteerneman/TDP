@@ -33,14 +33,21 @@ class SimpleProfiler:
     
         self.current_label = None
 
-    def print_statistics(self):
+    def print_statistics(self) -> str:
         total_duration = sum(self.aggregation.values())
 
-        print("\n==== Profiler statistics:")
-        print(f"Total duration: {total_duration:.4f} seconds")
+        string = ""
+
+        string += "\n==== Profiler statistics:\n"
+        string += f"Total duration: {total_duration:.4f} seconds\n"
+
+        max_length = max([ len(key) for key in self.aggregation.keys() ])
+
         for label, duration in self.aggregation.items():
             n = len(self.measurements[label])
-            print(f"  {label.rjust(40)} - {duration:.4f}s    {duration/total_duration:.2%}    #{n}    mean={duration/n:.4f}s")
+            string += f"  {label.ljust(max_length)} - {duration:8.4f}s    {duration/total_duration:6.2%}    #{n}    mean={duration/n:.4f}s\n"
+
+        return string
 
 if __name__ == "__main__":
     print("Testing profiler")

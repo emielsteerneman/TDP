@@ -15,6 +15,7 @@ from data_structures.TDPName import TDPName
 from data_structures.Paragraph import Paragraph   
 from data_structures.ProcessStateEnum import ProcessStateEnum
 from MyLogger import logger
+from simple_profiler import SimpleProfiler
 
 class MetadataTDPClient(ABC):
     @abstractmethod
@@ -65,6 +66,7 @@ class MetadataParagraphClient(ABC):
 class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
     
     def __init__(self, connection_string:str):
+        self.profiler = SimpleProfiler()
         self.client = MongoClient(connection_string, serverSelectionTimeoutMS = 3000)
         self.ensure_collection_tdp()
         self.ensure_collection_paragraph()
@@ -122,9 +124,11 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
             offset:int=0, limit:int=0
         ) -> list[TDP]:
         
+        self.profiler.start("[find_tdps] get collection")
         db:pymongo.database.Database = self.client.get_database("metadata")
         col:pymongo.collection.Collection = db.get_collection("tdp")
         
+        self.profiler.start("[find_tdps] create filters")
         filters = {}
         # Team filter
         if team is not None:
@@ -144,12 +148,18 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
         # Filehash filter
         if filehash is not None: filters["filehash"] = filehash
 
+        self.profiler.start("[find_tdps] run query")
         # TODO replace skip and limit with $facet ( https://codebeyondlimits.com/articles/pagination-in-mongodb-the-only-right-way-to-implement-it-and-avoid-common-mistakes )
         tdp_cursor = col.find(filters).skip(offset).limit(limit)
 
-        return [ 
-            TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"])) 
-            for tdp in tdp_cursor ]
+        self.profiler.start("[find_tdps] create TDP objects")
+        result = [ TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"])) for tdp in tdp_cursor ]
+
+        self.profiler.stop()
+
+        logger.info(self.profiler.print_statistics())
+        
+        return result
 
     def find_tdp_by_name(self, tdp_name:TDPName) -> TDP:
         db:pymongo.database.Database = self.client.get_database("metadata")
