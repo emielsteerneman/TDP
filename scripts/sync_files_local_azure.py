@@ -25,7 +25,7 @@ def local_to_azure(is_pdf:bool=True, force:bool=False, dry=False):
         az_files, az_hashes = azure_file_client.list_htmls()
         local_files, local_hashes = local_file_client.list_htmls()
 
-    print(f"Number of files on local: {len(local_hashes)}")
+    print(f"Number of files on local: {len(local_hashes)} ({len(local_hashes) - len(list(set(local_hashes)))} duplicates)")
     print(f"Number of files in Azure: {len(az_hashes)}")
 
     az_hashmap = dict(zip(az_hashes, az_files))
@@ -44,8 +44,8 @@ def local_to_azure(is_pdf:bool=True, force:bool=False, dry=False):
             
             # File has conflicting filenames
             print(f"File with hash {local_hash} has conflicting filenames")
-            print(f"  Azure: {tdpname_local}")
-            print(f"  Local: {tdpname_azure}")
+            print(f"  Azure: {tdpname_azure}")
+            print(f"  Local: {tdpname_local}")
 
             # Don't fix the conflict
             if dry or not force: continue
@@ -62,10 +62,10 @@ def local_to_azure(is_pdf:bool=True, force:bool=False, dry=False):
         if not dry:
             if is_pdf:
                 filepath = local_file_client.get_pdf(tdpname_local)
-                azure_file_client.store_pdf(filepath, tdpname_local)
+                azure_file_client.store_pdf(filepath, tdpname_local, overwrite=True)
             else:
                 filepath = local_file_client.get_html(tdpname_local)
-                azure_file_client.store_html(filepath, tdpname_local)
+                azure_file_client.store_html(filepath, tdpname_local, overwrite=True)
 
 def azure_to_local(is_pdf:bool=True, force:bool=False, dry=False):
     if is_pdf:
@@ -75,7 +75,7 @@ def azure_to_local(is_pdf:bool=True, force:bool=False, dry=False):
         az_files, az_hashes = azure_file_client.list_htmls()
         local_files, local_hashes = local_file_client.list_htmls()
 
-    print(f"Number of files on local: {len(local_hashes)}")
+    print(f"Number of files on local: {len(local_hashes)} ({len(local_hashes) - len(list(set(local_hashes)))} duplicates)")
     print(f"Number of files in Azure: {len(az_hashes)}")
 
     az_hashmap = dict(zip(az_hashes, az_files))
