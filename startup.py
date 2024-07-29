@@ -11,11 +11,13 @@ from data_access.file.file_client import AzureFileClient, LocalFileClient
 from data_access.vector.pinecone_client import PineconeClient
 from data_access.cache.cache_client import MongoDBClient as CacheClient
 from MyLogger import logger
+from simple_profiler import SimpleProfiler
 
 metadata_client = None
 file_client = None
 vector_client = None
 cache_client = None
+profiler = SimpleProfiler()
 
 def get_clients() -> tuple[MetadataClient, AzureFileClient|LocalFileClient, PineconeClient]:
     # TODO remove this function in favor of individual client getters
@@ -24,17 +26,26 @@ def get_clients() -> tuple[MetadataClient, AzureFileClient|LocalFileClient, Pine
     if metadata_client is not None and file_client is not None and vector_client is not None:
         return metadata_client, file_client, vector_client
 
+    profiler.start("[get_clients] get environment")
+
     ENVIRONMENT:str = get_environment()
     logger.info(f"ENVIRONMENT : {ENVIRONMENT}")
 
+    profiler.start("[get_clients] initialize file client")
     if ENVIRONMENT == "LOCAL":
         file_client = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
     elif ENVIRONMENT == "AZURE":
         file_client = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
 
+    profiler.start("[get_clients] initialize metadata client")
     metadata_client = MetadataClient(os.getenv("MONGODB_CONNECTION_STRING"))
+
+    profiler.start("[get_clients] initialize vector client")
     vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 
+    profiler.stop()
+    
+    logger.info(profiler.print_statistics())
     logger.info("Clients initialized successfully")
 
     return metadata_client, file_client, vector_client
