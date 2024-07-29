@@ -105,14 +105,14 @@ You are a helpful and knowledgeable assistant. You will be asked a question from
 Your task:
     * You will be given a question and a list of paragraphs.
     * Answer the question based on the information in the paragraphs.
-    * Always cite the team, year, and number of the source paragraph for every piece of information you provide.
+    * Always cite your sources for every piece of information you provide using the format [id].
     * Your answer should be concise and to the point.
     * Encourage the participant to do their own research by asking follow-up questions or suggesting further reading.
     * Be exhaustive and detailed. Provide as much information as possible.
     * Respond in markdown format. 
     * Add a paragraph ### further research.
     * Add a paragraph ### summary.
-    * Respond with at least 7500 characters.
+    * Respond with at least 10000 characters.
 
 Question: "{question}"
 
@@ -133,10 +133,10 @@ exhaustively answer the following question (ignore paragraphs without relevant d
         ]
 
         # Add the question as a separate message to maintain clarity
-        messages.append({
-            'role': 'user',
-            'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data), and end with a summary: " + question
-        })
+        # messages.append({
+        #     'role': 'user',
+        #     'content': "For each paragraph given, answer the following question (ignore paragraphs without relevant data), and end with a summary: " + question
+        # })
 
         # The messages are now ready to be sent to the OpenAI API
         response = self.client.chat.completions.create(
