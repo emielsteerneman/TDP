@@ -11,10 +11,117 @@ from dotenv import load_dotenv
 load_dotenv()
 # Local libraries
 from data_access.file.file_client import LocalFileClient, AzureFileClient
-from data_structures.TDPName import TDPName
 
 local_file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
 azure_file_client:AzureFileClient = AzureFileClient(os.getenv("AZURE_STORAGE_BLOB_TDPS_CONNECTION_STRING"))
+
+def status(list_some:bool=False, list_all:bool=False):
+    index_stop:int = 5 if list_some else 999999999
+
+    az_files_pdf, az_hashes_pdf = azure_file_client.list_pdfs()
+    local_files_pdf, local_hashes_pdf = local_file_client.list_pdfs()
+
+    az_files_html, az_hashes_html = azure_file_client.list_htmls()
+    local_files_html, local_hashes_html = local_file_client.list_htmls()
+
+    local_hashmap_pdf = dict(zip(local_hashes_pdf, local_files_pdf))
+    az_hashmap_pdf = dict(zip(az_hashes_pdf, az_files_pdf))
+
+    local_hashmap_html = dict(zip(local_hashes_html, local_files_html))
+    az_hashmap_html = dict(zip(az_hashes_html, az_files_html))
+
+    missing_hashes_on_local_pdf = list(set(az_hashes_pdf) - set(local_hashes_pdf))
+    missing_hashes_on_azure_pdf = list(set(local_hashes_pdf) - set(az_hashes_pdf))
+    
+    missing_hashes_on_local_html = list(set(az_hashes_html) - set(local_hashes_html))
+    missing_hashes_on_azure_html = list(set(local_hashes_html) - set(az_hashes_html))
+
+    conflicts_pdf = []
+    conflicts_html = []
+    n_conflicts_pdf = 0
+    n_conflicts_html = 0
+
+    # For each PDF file on local
+    for local_hash in local_hashes_pdf:
+        tdpname_local = local_hashmap_pdf[local_hash]
+        
+        # File is present in Azure
+        if local_hash in az_hashmap_pdf:
+            tdpname_azure = az_hashmap_pdf[local_hash]
+
+            # Filenames match
+            if tdpname_local == tdpname_azure: continue
+            
+            # File has conflicting filenames
+            n_conflicts_pdf += 1
+            conflicts_pdf.append((tdpname_local, tdpname_azure))
+
+    # For each HTML file on local
+    for local_hash in local_hashes_html:
+        tdpname_local = local_hashmap_html[local_hash]
+        
+        # File is present in Azure
+        if local_hash in az_hashmap_html:
+            tdpname_azure = az_hashmap_html[local_hash]
+
+            # Filenames match
+            if tdpname_local == tdpname_azure: continue
+            
+            n_conflicts_html += 1
+            conflicts_html.append((tdpname_local, tdpname_azure))
+            
+    print("\n\nStatus:\n")
+    print(f"PDFs  on local: {len(local_hashes_pdf)} ({len(local_hashes_pdf) - len(list(set(local_hashes_pdf)))} duplicates)")
+    print(f"PDFs  in Azure: {len(az_hashes_pdf)}")
+    print()
+    print(f"HTMLs on local: {len(local_hashes_html)} ({len(local_hashes_html) - len(list(set(local_hashes_html)))} duplicates)")
+    print(f"HTMLs in Azure: {len(az_hashes_html)}")
+    print()
+
+    print(f"PDFs  missing on local: {len(missing_hashes_on_local_pdf)}")
+    print(f"PDFs  missing on Azure: {len(missing_hashes_on_azure_pdf)}")
+    print()
+    print(f"HTMLs missing on local: {len(missing_hashes_on_local_html)}")
+    print(f"HTMLs missing on Azure: {len(missing_hashes_on_azure_html)}")
+    print()
+    print(f"Number of conflicts in PDFs : {n_conflicts_pdf}")
+    print(f"Number of conflicts in HTMLs: {n_conflicts_html}")
+    print()
+
+    if list_some or list_all:
+        if 0 < len(missing_hashes_on_local_pdf):
+            print("PDFs  missing on local:")
+            for i, hash in enumerate(missing_hashes_on_local_pdf[:index_stop]):
+                print(f"  {i:4} {hash} : {az_hashmap_pdf[hash]}")
+            print()
+        if 0 < len(missing_hashes_on_azure_pdf):
+            print("PDFs  missing on Azure:")
+            for i, hash in enumerate(missing_hashes_on_azure_pdf[:index_stop]):
+                print(f"  {i:4} {hash} : {local_hashmap_pdf[hash]}")
+            print()
+
+        if 0 < len(missing_hashes_on_local_html):
+            print("HTMLs missing on local:")
+            for i, hash in enumerate(missing_hashes_on_local_html[:index_stop]):
+                print(f"  {i:4} {hash} : {az_hashmap_html[hash]}")
+            print()
+        if 0 < len(missing_hashes_on_azure_html):
+            print("HTMLs missing on Azure:")
+            for i, hash in enumerate(missing_hashes_on_azure_html[:index_stop]):
+                print(f"  {i:4} {hash} : {local_hashmap_html[hash]}")
+            print()
+
+        if 0 < n_conflicts_pdf:
+            print("Conflicting PDFs:")
+            for i, (local, azure) in enumerate(conflicts_pdf[:index_stop]):
+                print(f"  {i:4} {local} : {azure}")
+            print()
+        if 0 < n_conflicts_html:
+            print("Conflicting HTMLs:")
+            for i, (local, azure) in enumerate(conflicts_html[:index_stop]):
+                print(f"  {i:4} local : {local} <> azure : {azure}")
+            print()
+    print("\n")
 
 def local_to_azure(is_pdf:bool=True, force:bool=False, dry=False):
     if is_pdf:
@@ -135,21 +242,30 @@ if __name__ == "__main__":
 
     while True:
         try:
-            print("1. Sync local PDFs to Azure")
-            print("2. Sync Azure PDFs to local")
-            print("3. Sync local HTMLs to Azure")
-            print("4. Sync Azure HTMLs to local")
+            print("1. Status")
+            print("2. Sync local PDFs to Azure")
+            print("3. Sync Azure PDFs to local")
+            print("4. Sync local HTMLs to Azure")
+            print("5. Sync Azure HTMLs to local")
             print()
             choice = int(input("Enter choice: "))
-            force:bool = input("Force fix conflicts? (y/n): ") == "y"
+            if choice in [2, 3, 4, 5]:
+                force:bool = input("Force fix conflicts? (y/n): ") == "y"
 
             if choice == 1:
-                local_to_azure(is_pdf=True, force=force, dry=dry)
+                print("  1. Don't list")
+                print("  2. List 5")
+                print("  3. List all")
+                print()
+                subchoice = int(input("  Enter choice: "))
+                status(list_some=subchoice == 2, list_all=subchoice == 3)
             elif choice == 2:
-                azure_to_local(is_pdf=True, force=force, dry=dry)
+                local_to_azure(is_pdf=True, force=force, dry=dry)
             elif choice == 3:
-                local_to_azure(is_pdf=False, force=force, dry=dry)
+                azure_to_local(is_pdf=True, force=force, dry=dry)
             elif choice == 4:
+                local_to_azure(is_pdf=False, force=force, dry=dry)
+            elif choice == 5:
                 azure_to_local(is_pdf=False, force=force, dry=dry)
             else:
                 print("Invalid choice")
