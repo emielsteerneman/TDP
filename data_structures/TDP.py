@@ -10,7 +10,7 @@ class TDP:
     def __init__(self, tdp_name:TDPName, id: int=None, filehash:str=None, structure:TDPStructure=None, process_state:ProcessStateEnum=ProcessStateEnum.PENDING):
         self.tdp_name:TDPName = tdp_name
         self.id:int = id
-        self.filehash:str = filehash
+        self.filehash:str = filehash if filehash is not None else tdp_name.filehash
         self.structure:TDPStructure = structure
         self.state = {
             "run_id": uniqid,

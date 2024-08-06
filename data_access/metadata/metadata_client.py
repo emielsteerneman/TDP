@@ -151,9 +151,10 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
         self.profiler.start("[find_tdps] run query")
         # TODO replace skip and limit with $facet ( https://codebeyondlimits.com/articles/pagination-in-mongodb-the-only-right-way-to-implement-it-and-avoid-common-mistakes )
         tdp_cursor = col.find(filters).skip(offset).limit(limit)
+        tdps = [ tdp for tdp in tdp_cursor ]
 
         self.profiler.start("[find_tdps] create TDP objects")
-        result = [ TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"])) for tdp in tdp_cursor ]
+        result = [ TDP(TDPName.from_string(tdp["filename"]).set_filehash(tdp["filehash"])) for tdp in tdps ]
 
         self.profiler.stop()
 

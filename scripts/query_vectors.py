@@ -22,7 +22,7 @@ from openai import RateLimitError
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 llm_client = OpenAIClient()
 
-print(f"Paragraphs: {vector_client.count_paragraphs()}    Questions: {vector_client.count_questions()}")
+print(f"Paragraphs: {vector_client.count_paragraph_chunks()}    Questions: {vector_client.count_questions()}")
 
 while True:
     print("\n\n")

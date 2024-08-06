@@ -152,7 +152,7 @@ class MyWeaviateClient(ClientInterface):
         collection.query.hybrid
         return collection
 
-    def delete_paragraphs(self) -> None:
+    def delete_paragraph_chunks(self) -> None:
         logger.info(f"Deleting all objects from collection '{self.COLLECTION_NAME_PARAGRAPH}'")
         # https://weaviate.io/developers/weaviate/manage-data/delete
         # the number of objects that can be deleted in a single query is limited (default 10,000)

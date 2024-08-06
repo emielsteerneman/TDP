@@ -64,15 +64,22 @@ class PineconeClient(ClientInterface):
 
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
+        
         response = self.index_paragraph.fetch(ids)
         
-        # for vector in response['vectors']:
-        #     vector:Vector = response['vectors'][vector]
-        #     print(vector.metadata)
-
         metadatas = [vector.metadata for vector in response['vectors'].values()]
 
         return metadatas
+
+    def get_paragraph_chunks_by_tdpname(self, tdp_name:TDPName) -> list[str]:
+        logger.info(f"Retrieving paragraphs by tdp name {tdp_name}")
+
+        if self.index_paragraph is None:
+            self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
+        
+        response = list(self.index_paragraph.list(prefix=tdp_name.filename))
+
+        return [] if not len(response) else response[0]
 
     def store_paragraph_chunk(self, chunk: ParagraphChunk, dense_vector:np.ndarray, sparse_vector:coo_array) -> None:
         if self.index_paragraph is None:
@@ -106,7 +113,7 @@ class PineconeClient(ClientInterface):
 
         self.index_paragraph.upsert([vector])
 
-    def query_paragraphs(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter:VectorFilter=None, include_metadata=True) -> list[Paragraph]:
+    def query_paragraph_chunks(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter:VectorFilter=None, include_metadata=True) -> list[Paragraph]:
         logger.info(f"Querying index {self.INDEX_NAME_PARAGRAPH}")
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
@@ -124,7 +131,7 @@ class PineconeClient(ClientInterface):
         logger.info(f"Index queried. Duration: {t_stop-t_start:.2f}s")
         return response
 
-    def delete_paragraphs(self):
+    def delete_paragraph_chunks(self):
         logger.info(f"Deleting all vectors from index {self.INDEX_NAME_PARAGRAPH}")
         
         if self.index_paragraph is None:
@@ -138,26 +145,31 @@ class PineconeClient(ClientInterface):
                 for message in response:
                     logger.error(message, ":", response[message])
 
-    def delete_paragraphs_by_name(self, tdp_name:TDPName):
+    def delete_paragraph_chunks_by_tdpname(self, tdp_name:TDPName) -> bool:
         logger.info(f"Deleting all vectors from index {self.INDEX_NAME_PARAGRAPH} with name {tdp_name}")
         
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
         
-        logger.info(f"Number of vectors before deletion: {self.count_paragraphs()}")
+        logger.info(f"Number of vectors before deletion: {self.count_paragraph_chunks()}")
+
+        error = False
 
         # https://docs.pinecone.io/guides/data/manage-rag-documents
         for ids in self.index_paragraph.list(prefix=tdp_name.filename):
             response:dict = self.index_paragraph.delete(ids)
 
             if len(response.keys()) > 0:
+                error = True
                 logger.error("Errors occured while deleting paragraphs")
                 for message in response:
                     logger.error(message, ":", response[message])
 
-        logger.info(f"Number of vectors  after deletion: {self.count_paragraphs()}")
+        logger.info(f"Number of vectors  after deletion: {self.count_paragraph_chunks()}")
 
-    def count_paragraphs(self) -> int:
+        return error
+
+    def count_paragraph_chunks(self) -> int:
         if self.index_paragraph is None:
             self.index_paragraph = self.client.Index(self.INDEX_NAME_PARAGRAPH)
         
@@ -175,6 +187,16 @@ class PineconeClient(ClientInterface):
         metadatas = [vector.metadata for vector in response['vectors'].values()]
 
         return metadatas
+
+    def get_questions_by_tdpname(self, tdp_name:TDPName) -> list[str]:
+        logger.info(f"Retrieving questions by tdp name {tdp_name}")
+        
+        if self.index_question is None:
+            self.index_question = self.client.Index(self.INDEX_NAME_QUESTION)
+        
+        response = list(self.index_question.list(prefix=tdp_name.filename))
+        
+        return [] if not len(response) else response[0]
 
     def store_question(self, chunk: ParagraphChunk, question: str, dense_vector:np.ndarray, sparse_vector:coo_array) -> None:
         if self.index_question is None:
@@ -232,7 +254,7 @@ class PineconeClient(ClientInterface):
                 for message in response:
                     logger.error(message, ":", response[message])
 
-    def delete_questions_by_name(self, tdp_name:TDPName):
+    def delete_questions_by_tdpname(self, tdp_name:TDPName) -> bool:
         logger.info(f"Deleting all vectors from index {self.INDEX_NAME_QUESTION} with name {tdp_name}")
         
         if self.index_question is None:
@@ -240,16 +262,21 @@ class PineconeClient(ClientInterface):
         
         logger.info(f"Number of vectors before deletion: {self.count_questions()}")
 
+        error = False
+
         # https://docs.pinecone.io/guides/data/manage-rag-documents
         for ids in self.index_question.list(prefix=tdp_name.filename):
             response:dict = self.index_question.delete(ids)
 
             if len(response.keys()) > 0:
+                error = True
                 logger.error("Errors occured while deleting questions")
                 for message in response:
                     logger.error(message, ":", response[message])
         
         logger.info(f"Number of vectors  after deletion: {self.count_questions()}")
+
+        return error
 
     def count_questions(self) -> int:
         if self.index_question is None:

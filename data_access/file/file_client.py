@@ -205,13 +205,13 @@ class LocalFileClient(FileClient):
             f.write(file_bytes)
 
     def delete_pdf(self, tdp_name:TDPName):
-        filepath:str = os.path.join(self.pdf_root, tdp_name.to_filepath())
+        filepath:str = os.path.join(self.pdf_root, tdp_name.to_filepath(TDPName.PDF_EXT))
         if not os.path.isfile(filepath):
             raise FileNotFoundError(f"File {tdp_name} does not exist")
         os.remove(filepath)
 
     def delete_html(self, tdp_name:TDPName):
-        filepath:str = os.path.join(self.html_root, tdp_name.to_filepath())
+        filepath:str = os.path.join(self.html_root, tdp_name.to_filepath(TDPName.HTML_EXT))
         if not os.path.isfile(filepath):
             raise FileNotFoundError(f"File {tdp_name} does not exist")
         os.remove(filepath)

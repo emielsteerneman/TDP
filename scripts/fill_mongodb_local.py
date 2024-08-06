@@ -130,14 +130,14 @@ n_chunks_stored = 0
 n_questions_specific_stored = 0
 n_questions_generic_stored = 0
 
-print(f"Paragraphs: {vector_client.count_paragraphs()}    Questions: {vector_client.count_questions()}")
-if vector_client.count_paragraphs() > 0 or vector_client.count_questions() > 0:
+print(f"Paragraphs: {vector_client.count_paragraph_chunks()}    Questions: {vector_client.count_questions()}")
+if vector_client.count_paragraph_chunks() > 0 or vector_client.count_questions() > 0:
     confirmation = input(f"Are you sure you want to process {len(pdfs)} PDFs? (y/n): ")
     if confirmation.lower() != "y":
         print("Exiting")
         exit()
 
-# vector_client.delete_paragraphs()
+# vector_client.delete_paragraph_chunks()
 # vector_client.delete_questions()
 
 # metadata_client.drop_tdps()
@@ -165,9 +165,10 @@ for i_pdf, tdp_name in enumerate(pdfs):
             
             # Somehow not completed. Remove and reprocess
             profiler.start("delete from database")
-            vector_client.delete_questions_by_name(tdp_name)
-            vector_client.delete_paragraphs_by_name(tdp_name)
-            metadata_client.delete_tdp_by_name(tdp_name)
+            error = False
+            error |= vector_client.delete_paragraph_chunks_by_tdpname(tdp_name)
+            error |= vector_client.delete_questions_by_tdpname(tdp_name)
+            if not error: metadata_client.delete_tdp_by_name(tdp_name)
             profiler.stop()
             print(f"Reprocessing {tdp_name}. State={tdp_db.state['process_state']}. Error={tdp_db.state['error']}")
 

@@ -146,7 +146,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
     logger.debug(f"Filter: {filter}")
 
     # Get paragraphs and questions from vector database
-    response_paragraph_chunks = vector_client.query_paragraphs(dense_vector, sparse_vector, limit=30, filter=filter)
+    response_paragraph_chunks = vector_client.query_paragraph_chunks(dense_vector, sparse_vector, limit=30, filter=filter)
     response_questions = vector_client.query_questions(dense_vector, sparse_vector, limit=60, filter=filter)
 
     """ Paragraph metadata:

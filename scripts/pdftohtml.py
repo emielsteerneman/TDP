@@ -8,7 +8,7 @@ import time
 # Third party libraries
 # Local libraries
 import startup
-metadata_client, file_client, _ = startup.get_clients()
+_, file_client, _ = startup.get_clients()
 
 pdfs, _ = file_client.list_pdfs()
 
@@ -44,5 +44,7 @@ for i_pdf, pdf in enumerate(pdfs):
 
     finally:
         # Remove files
-        os.remove(pdf_path_out)
-        os.remove(pdf_path_html)
+        if os.path.exists(pdf_path_out):
+            os.remove(pdf_path_out)
+        if os.path.exists(pdf_path_html):
+            os.remove(pdf_path_html)
