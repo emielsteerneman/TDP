@@ -20,26 +20,42 @@ def status(list_some:bool=False, list_all:bool=False):
 
     az_files_pdf, az_hashes_pdf = azure_file_client.list_pdfs()
     local_files_pdf, local_hashes_pdf = local_file_client.list_pdfs()
-
     az_files_html, az_hashes_html = azure_file_client.list_htmls()
     local_files_html, local_hashes_html = local_file_client.list_htmls()
 
+    local_duplicates_pdf = len(local_hashes_pdf) - len(list(set(local_hashes_pdf)))
+    local_duplicates_html = len(local_hashes_html) - len(list(set(local_hashes_html)))
+
     local_hashmap_pdf = dict(zip(local_hashes_pdf, local_files_pdf))
     az_hashmap_pdf = dict(zip(az_hashes_pdf, az_files_pdf))
-
     local_hashmap_html = dict(zip(local_hashes_html, local_files_html))
     az_hashmap_html = dict(zip(az_hashes_html, az_files_html))
 
     missing_hashes_on_local_pdf = list(set(az_hashes_pdf) - set(local_hashes_pdf))
     missing_hashes_on_azure_pdf = list(set(local_hashes_pdf) - set(az_hashes_pdf))
-    
     missing_hashes_on_local_html = list(set(az_hashes_html) - set(local_hashes_html))
     missing_hashes_on_azure_html = list(set(local_hashes_html) - set(az_hashes_html))
 
+    pdfs_missing_htmls = list(set([_.filename for _ in local_files_pdf]) - set([_.filename for _ in local_files_html]))
+    htmls_missing_pdfs = list(set([_.filename for _ in local_files_html]) - set([_.filename for _ in local_files_pdf]))
+
+    ### Find duplicates
+    duplicates_pdf = []
+    if local_duplicates_pdf:
+        for i_hash, hash in enumerate(local_hashes_pdf):
+            sub_duplicates = [local_files_pdf[i+i_hash] for i, h in enumerate(local_hashes_pdf[i_hash:]) if h == hash]
+            if 1 < len(sub_duplicates):
+                duplicates_pdf.append(sub_duplicates)
+    duplicates_html = []
+    if local_duplicates_html:
+        for i_hash, hash in enumerate(local_hashes_html):
+            sub_duplicates = [local_files_html[i+i_hash] for i, h in enumerate(local_hashes_html[i_hash:]) if h == hash]
+            if 1 < len(sub_duplicates):
+                duplicates_html.append(sub_duplicates)
+
+    ### Find conflicts
     conflicts_pdf = []
     conflicts_html = []
-    n_conflicts_pdf = 0
-    n_conflicts_html = 0
 
     # For each PDF file on local
     for local_hash in local_hashes_pdf:
@@ -53,7 +69,6 @@ def status(list_some:bool=False, list_all:bool=False):
             if tdpname_local == tdpname_azure: continue
             
             # File has conflicting filenames
-            n_conflicts_pdf += 1
             conflicts_pdf.append((tdpname_local, tdpname_azure))
 
     # For each HTML file on local
@@ -66,15 +81,15 @@ def status(list_some:bool=False, list_all:bool=False):
 
             # Filenames match
             if tdpname_local == tdpname_azure: continue
-            
-            n_conflicts_html += 1
+
+            # File has conflicting filenames            
             conflicts_html.append((tdpname_local, tdpname_azure))
             
     print("\n\nStatus:\n")
-    print(f"PDFs  on local: {len(local_hashes_pdf)} ({len(local_hashes_pdf) - len(list(set(local_hashes_pdf)))} duplicates)")
+    print(f"PDFs  on local: {len(local_hashes_pdf)} ({local_duplicates_pdf} duplicates)")
     print(f"PDFs  in Azure: {len(az_hashes_pdf)}")
     print()
-    print(f"HTMLs on local: {len(local_hashes_html)} ({len(local_hashes_html) - len(list(set(local_hashes_html)))} duplicates)")
+    print(f"HTMLs on local: {len(local_hashes_html)} ({local_duplicates_html} duplicates)")
     print(f"HTMLs in Azure: {len(az_hashes_html)}")
     print()
 
@@ -84,8 +99,12 @@ def status(list_some:bool=False, list_all:bool=False):
     print(f"HTMLs missing on local: {len(missing_hashes_on_local_html)}")
     print(f"HTMLs missing on Azure: {len(missing_hashes_on_azure_html)}")
     print()
-    print(f"Number of conflicts in PDFs : {n_conflicts_pdf}")
-    print(f"Number of conflicts in HTMLs: {n_conflicts_html}")
+
+    print(f"PDFs  missing HTMLs: {len(pdfs_missing_htmls)}")
+    print(f"HTMLs missing PDFs : {len(htmls_missing_pdfs)}")
+
+    print(f"Number of conflicts in PDFs : {len(conflicts_pdf)}")
+    print(f"Number of conflicts in HTMLs: {len(conflicts_html)}")
     print()
 
     if list_some or list_all:
@@ -111,12 +130,36 @@ def status(list_some:bool=False, list_all:bool=False):
                 print(f"  {i:4} {hash} : {local_hashmap_html[hash]}")
             print()
 
-        if 0 < n_conflicts_pdf:
+        if pdfs_missing_htmls:
+            print("PDFs missing HTMLs:")
+            for i, pdf in enumerate(pdfs_missing_htmls[:index_stop]):
+                print(f"  {i:4} {pdf}")
+            print()
+        if htmls_missing_pdfs:
+            print("HTMLs missing PDFs:")
+            for i, html in enumerate(htmls_missing_pdfs[:index_stop]):
+                print(f"  {i:4} {html}")
+            print()
+
+        if local_duplicates_pdf:
+            print("Duplicate PDFs:")
+            for i, duplicates in enumerate(duplicates_pdf[:index_stop]):
+                for j, duplicate in enumerate(duplicates):
+                    print(f"  {i:4} {j:4} {duplicate}")
+                print()
+        if local_duplicates_html:
+            print("Duplicate HTMLs:")
+            for i, duplicates in enumerate(duplicates_html[:index_stop]):
+                for j, duplicate in enumerate(duplicates):
+                    print(f"  {i:4} {j:4} {duplicate}")
+                print()
+
+        if 0 < len(conflicts_pdf):
             print("Conflicting PDFs:")
             for i, (local, azure) in enumerate(conflicts_pdf[:index_stop]):
                 print(f"  {i:4} {local} : {azure}")
             print()
-        if 0 < n_conflicts_html:
+        if 0 < len(conflicts_html):
             print("Conflicting HTMLs:")
             for i, (local, azure) in enumerate(conflicts_html[:index_stop]):
                 print(f"  {i:4} local : {local} <> azure : {azure}")
