@@ -120,6 +120,11 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
     Bonus assumption: Most if not all papers have a paragraph title "Introduction"
     """
 
+    c = Counter([ int(span['bbox'][0]*100)/100 for span in spans ]).most_common(5)
+    for k,v in c:
+        print(f"{k:>6}, {v:>4}, {v/len(spans):.2%}")
+    exit()
+
     x_left_aligned = Counter([ span['bbox'][0] for span in spans ]).most_common(1)[0][0]
     most_common_fontsize = Counter([ span['size'] for span in spans ]).most_common(1)[0][0]
     most_common_font = Counter([ span['font'] for span in spans ]).most_common(1)[0][0]
@@ -138,6 +143,8 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
 
     spans_selected = []
 
+    NUMERALS = ["I.", "II.", "III.", "IV."] # Haven't seen numerals over IV
+
     for i_span in range(-1, len(spans)-1):
         i_span += 1
         span = spans[i_span]
@@ -148,7 +155,14 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
         is_weird_font = span['font'] != most_common_font
         is_larger_size = most_common_fontsize < span['size']
         is_left_aligned = abs(span['bbox'][0] - x_left_aligned) < 1
+        is_numeral = any([ span['text'].startswith(n) for n in NUMERALS ])
         possible_semver = span['text'].split(" ")[0]
+
+        if is_numeral:
+
+            print("!!!!!!!!!")
+            print(span['text'])
+            print(is_numeral)
         
         semver_level = 0
         if Semver.is_major_semver(possible_semver) and Semver.parse(possible_semver).A < 100: semver_level = 1
@@ -166,12 +180,12 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
 
         # print()
         # print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
-        # print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
+        # print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", "N" if is_numeral else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
     
 
 
         ### Skip spans that are presumably not paragraph titles
-        total = is_bold + is_italic + is_weird_font + is_larger_size + is_left_aligned + (0<semver_level)
+        total = is_bold + is_italic + is_weird_font + is_larger_size + is_left_aligned + is_numeral + (0<semver_level)
         if total == 0: continue
         if span['size'] < most_common_fontsize: continue
         if span['size'] <= most_common_fontsize and not is_bold and not is_italic and semver_level == 0: continue
@@ -203,9 +217,9 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
             }
         )
 
-        # print()
-        # print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
-        # print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
+        print()
+        print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
+        print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", "N" if is_numeral else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
     
     span_abstract, span_reference = None, None
     for span in spans_selected:
@@ -293,7 +307,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
         # logger.info(f"Loading PDF from {pdf}")
         pdf: fitz.Document = fitz.open(pdf)
 
-    logger.info(f"Processing {pdf.name}")
+    logger.info(f"\n\nProcessing {pdf.name}")
 
     tdp_structure = TDPStructure()
 
@@ -311,7 +325,54 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     # Create mask that references all spans that are not normal text spans (figure descriptions, page numbers, paragraph titles, etc)
     spans_id_mask:list[int] = []
 
+    page_width = pdf[0].rect.width
+    half_width = page_width / 2
+    print("half width", half_width)
+    hits = 0
+    n_spans_counted = 0
+    for span in spans:
+        if len(span['text']) <= 5: continue
+        x1,_,x2,_ = span['bbox']
+        hit = x1 < half_width < x2
+        hits += hit
+        n_spans_counted += 1
+        # print(f"{x1:>8.2f} {x2:>8.2f} {hit:>5} {span['text']}")
+
+    f_hits = hits / n_spans_counted
+    col1_hits = 0.1 < f_hits
+    print(f"hits {hits:>4} {f_hits:.2%}")
+ 
+    c = Counter([ int(span['bbox'][0]*100)/100 for span in spans ]).most_common(10)
     
+
+
+    c_merged = {}
+    for k,v in c:
+        if v / n_spans_counted < 0.01: break
+        key = k
+        for k_ in c_merged.keys():
+            if abs(k-k_) < 3:
+                key = k_
+                break
+        if key not in c_merged: c_merged[key] = 0
+        c_merged[key] += v
+    
+    for k,v in c:
+        if v/n_spans_counted < 0.05: continue
+        print(f"{k:>6}, {v:>4}, {v/n_spans_counted:>8.2%}", end="")
+        if k in c_merged:
+            print(f"  {c_merged[k]:>6}, {c_merged[k]/n_spans_counted:8.2%}", end="")
+        print()
+
+    top1, top2 = sorted(c_merged.values(), reverse=True)[:2]
+    top1, top2 = top1/n_spans_counted, top2/n_spans_counted
+
+    print("top1 and 2", top1, top2)
+
+    return f_hits, top1, top2
+
+    return tdp_structure
+
     ### Match images with spans that make up their description
     # Thus, sentences such as "Fig. 5. Render of the proposed redesign of the front assembly"
     logger.info("======== match_image_with_spans ========")
@@ -333,6 +394,10 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     ### Find all sentences that can make up a paragraph title
     logger.info("======== find_paragraph_headers ========")
     paragraph_spans, abstract_id, references_id = find_paragraph_headers(spans)
+
+    print(f"fwefwe0-fwef - {len(paragraph_spans)}")
+    for p in paragraph_spans:
+        print(p['text'])
 
     # Extend spans_id_mask with found paragraph titles, and abstract id and references id
     spans_id_mask += [ _['id'] for _ in paragraph_spans ]
@@ -468,6 +533,11 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
                             ):
                                 previous_span["text"] += " " + span["text"]
                                 previous_span["size"] = max(previous_span["size"], span["size"])
+                                # Extend the bbox of the previous span
+                                x0, y0, _, y1 = previous_span["bbox"]
+                                previous_span["bbox"] = (x0, y0, span["bbox"][2], y1)
+                                x0, y0, _, y1 = previous_span["bbox_absolute"]
+                                previous_span["bbox_absolute"] = (x0, y0, span["bbox_absolute"][2], y1)
                                 continue
 
                         span["id"] = factory_id
