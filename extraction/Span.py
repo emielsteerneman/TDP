@@ -1,7 +1,7 @@
 class Span(dict):
     """This class is nothing other than a dict wrapper. It's use is to make the code more readable by enabling type
     hinting / type checking. A span return by the Fitz library has the following keys:
-    - bbox: (float x4)            span rectangle
+    - bbox: (float x4)            span rectangle in format (x0, y0, x1, y1) relative to the top left of the page
     - origin: (float x2)          the first character's origin
     - font: str                   font name
     - ascender: float             ascender of the font
@@ -14,6 +14,7 @@ class Span(dict):
     - id: int                     Unique identifier for the Span within the PDF
     - bold: bool                  Whether the text is bold
     - page: int                   Page number of the PDF
+    - bbox_absolute: (float x4)   span rectangle in format (x0, y0, x1, y1) relative to the top left of the document (so 1st page)
 
     The following is an example of a span:
 
