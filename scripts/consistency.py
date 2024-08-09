@@ -40,17 +40,17 @@ for i in range(len(metadata)):
 
         print(f"  Hash={int(metadata_hash_in_files)} name={int(metadata_name_in_files)} #p={len(paragraph_chunk_ids):2} #q={len(question_ids):2}: {metadata_name}")
 
-        error = False
-        error |= vector_client.delete_paragraph_chunks_by_tdpname(metadata_name)
-        error |= vector_client.delete_questions_by_tdpname(metadata_name)
-        if not error: metadata_client.delete_tdp_by_name(metadata_name)
+        # error = False
+        # error |= vector_client.delete_paragraph_chunks_by_tdpname(metadata_name)
+        # error |= vector_client.delete_questions_by_tdpname(metadata_name)
+        # if not error: metadata_client.delete_tdp_by_name(metadata_name)
 
-        time.sleep(2)
+        # time.sleep(2)
 
-        paragraph_chunk_ids = vector_client.get_paragraph_chunks_by_tdpname(metadata_name)
-        question_ids = vector_client.get_questions_by_tdpname(metadata_name)
-        print(f"  Hash={int(metadata_hash_in_files)} name={int(metadata_name_in_files)} #p={len(paragraph_chunk_ids):2} #q={len(question_ids):2}: {metadata_name}")
-        print()        
+        # paragraph_chunk_ids = vector_client.get_paragraph_chunks_by_tdpname(metadata_name)
+        # question_ids = vector_client.get_questions_by_tdpname(metadata_name)
+        # print(f"  Hash={int(metadata_hash_in_files)} name={int(metadata_name_in_files)} #p={len(paragraph_chunk_ids):2} #q={len(question_ids):2}: {metadata_name}")
+        # print()        
 
 print("Files not tied to an entry in metadata: ")
 for i in range(len(local_names)):
