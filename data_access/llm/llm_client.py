@@ -52,6 +52,61 @@ class OpenAIClient(LLMClient):
         self.client = OpenAI()
         self.total_costs = 0
 
+    def generate_paragraph_titles(self, feature_string:str, hint_string:str="",model="gpt-4o-mini") -> list[str]:
+        """
+        Generate paragraph titles using OpenAI's LLM.
+        """
+        
+        prompt = (
+            "The overal goal of your task is paragraph extraction from a PDF based on titles, headers, subheaders, and subsubheaders. "
+            "You will receive a list of lines extracted from a PDF. These lines are chosen specifically because they differ from 'normal' text lines. "
+            "Each line type could be a possible title, header, subheader, or subsubheader. There is also the possiblity that a line is simply nothing. "
+            "For each line, you will receive its line number, its text, and a list of corresponding features. "
+            "For each line, decide if the type is a title, header, subheader, subsubheader, or nothing. "
+            "For each line, respond with a list [line number, line text, line type]. "
+            "Use the following line type mapping: title=0, header=1, subheader=2, subsubheader=3, nothing=99. "
+            "Be conservative. It's better to miss a few titles or headers than too have too much. Precision over recall."
+            "Rule: if one header or subheader starts with a number, they all do. If a line does not have a number while there are headers or subheaders with a number, then the line is probably a subsubheader. "
+            "Rule: a header should always be followed by a subheader, and a subheader should always be followed by a subsubheader. "
+            "Rule: the feature 'group' is very important. All titles, headers, subheaders, and subsubheaders should be in the same group. "
+            #"Rule: it is more like that a line is a header than a subheader or subsubheader. Make more headers"
+            "Rule: a group of headers or subheader should be sequential and start with 1 or a or A. If it doesn't start with 1, then it is probably nothing. "
+            "Respond with a JSON list of tuples. \n"
+        )
+
+        if len(hint_string):
+            prompt += (
+                "The following line types have already be determined and can be used as a guideline. These are not leading, and might be wrong, and can be disregarded if they are wrong. \n"
+                f"{hint_string} \n"
+            )
+
+        prompt += (
+            "Process the following lines: \n"
+            f"{feature_string} \n"
+        )
+
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=[{
+                'role': 'user',
+                'content': prompt
+            }]
+        )
+
+        self.total_costs += response.usage.prompt_tokens * self.api_costs[response.model]["input"]
+        self.total_costs += response.usage.completion_tokens * self.api_costs[response.model]["output"]
+
+        print("Total costs: ", self.total_costs)
+
+        response_text = response.choices[0].message.content.strip()
+        response_text = response_text[response_text.find("["):response_text.rfind("]")+1]
+
+        try:
+            return [ tuple(_) for _ in json.loads(response_text) ]
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse response: {response_text}")
+            return []
+
     def generate_paragraph_chunk_information(self, chunk:ParagraphChunk, n_questions:int=3, model="gpt-4o-mini") -> dict:
         """
         Generate information about a paragraph using OpenAI's LLM.

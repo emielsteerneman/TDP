@@ -1,14 +1,18 @@
 # System libraries
+import os
 import re
 from collections import Counter
+import json
 # Third party libraries
 import fitz
 import numpy as np
+from scipy.stats import kstest
 # Local libraries
 from MyLogger import logger
 from .Semver import Semver
 from .Span import Span
 from .Image import Image
+from data_access.llm.llm_client import OpenAIClient
 from data_structures.TDPStructure import TDPStructure
 from data_structures.Paragraph import Paragraph
 from data_structures.Sentence import Sentence
@@ -16,6 +20,8 @@ from text_processing import text_processing as TP
 from . import utilities as U
 
 # PyMuPDF documentation: https://buildmedia.readthedocs.org/media/pdf/pymupdf/latest/pymupdf.pdf
+
+llm_client:OpenAIClient = OpenAIClient()
 
 """
 TODO:
@@ -77,6 +83,14 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 # ./TDPs/2009/2009_ETDP_Plasma-Z.pdf
 """
 
+def do_uniformity_test(range_min:float, range_max:float, points:list[float]) -> float:
+    print(f"[do_uniformity_test] range_min: {range_min}, range_max: {range_max}, points min: {min(points)}, points max: {max(points)}")
+    # Normalize points
+    points = [(p - range_min) / (range_max - range_min) for p in points]
+    # Perform Kolmogorov-Smirnov test
+    ks_statistic, p_value = kstest(points, 'uniform')
+    return 0.05 < p_value, p_value, ks_statistic
+
 def bounding_boxes_overlap_y(span1: Span, span2: Span) -> float:
     """Check if two spans overlap in the y direction. This is useful to determine if two spans are part of the same
     paragraph.
@@ -100,17 +114,60 @@ def bounding_boxes_overlap_y(span1: Span, span2: Span) -> float:
     
     return overlap / total_height
 
+def detect_number_of_columns(page_width_half:float, spans: list[Span]) -> int:
+    n_hits = 0
+    n_spans_checked = 0
+    
+    for span in spans:
+        # Many spans that have only a few characters are often these weird formula spans. There can be quite a lot of them
+        # and throw off the column detection formula. So we skip them.
+        if len(span['text']) <= 5: continue
+        x1,_,x2,_ = span['bbox']
+        n_hits += x1 <= page_width_half <= x2
+        n_spans_checked += 1
 
+    # If more that 10% of the spans cross the middle of the page, we assume it's a single column document
+    f_hits = n_hits / n_spans_checked
+    n_colums = 1 if 0.1 < f_hits else 2
 
-def printgroups(groups):
-    for group in groups:
-        print()
-        print("GROUP")
-        for span in group:
-            print(f"{span['span']['bbox_absolute'][1]:.0f}", span['span']["text"])
-            print("B" if span['is_bold'] else " ", "I" if span['is_italic'] else " ", "F" if span['is_weird_font'] else " ", "S" if span['is_larger_size'] else " ", "L" if span['is_left_aligned'] else " ", span["semver_level"] if 0 < span["semver_level"] else " ", "D" if span['has_spacing'] else " ", f"{span['span']['size']:.2f}", f"{span['distance_to_span_above']:.2f}")
+    print(f"n_hits: {n_hits}, n_spans_checked: {n_spans_checked}, f_hits: {f_hits}, n_colums: {n_colums}")
 
-def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
+    return n_colums
+
+def get_most_common_span_x(spans: list[Span], n_spans=2) -> float:
+    x_counter = Counter([ span['bbox'][0] for span in spans ])
+
+    x_grouped = {}
+    for x, n in x_counter.items():
+        for x_ in x_grouped.keys():
+            if abs(x-x_) < 3:
+                x = x_
+                break
+        if x not in x_grouped: x_grouped[x] = 0
+        x_grouped[x] += n
+
+    x_most_common_sorted = sorted(x_grouped.keys(), key = lambda _: x_grouped[_], reverse=True)
+    return x_most_common_sorted[:n_spans]
+
+def feature_dict_to_string_for_llm(span:Span, features:dict, align=False) -> str:
+    string = ""
+    if align: string += f"line_number={span['id']:>5} text={'|'+span['text']+'|':<40.40} fontsize={span['size']:.2f}| features = "
+    else:     string += f"line_number={span['id']} text={span['text']} | features = "
+
+    for key in features.keys():
+        if isinstance(features[key], bool):
+            if features[key]:
+                string += f"{key}  "
+        elif isinstance(features[key], float):
+            string += f"{key}={features[key]:.2f}  "
+        else:
+            string += f"{key}={features[key]}  "
+    string += "\n"
+    return string
+
+PDF:str = ""
+
+def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[float]) -> tuple[list[Span], int, int]:
     """ Assumptions. Most paragraph titles
     * are bold or (less common) italic
     * start on the left of the page / column
@@ -120,15 +177,21 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
     Bonus assumption: Most if not all papers have a paragraph title "Introduction"
     """
 
-    c = Counter([ int(span['bbox'][0]*100)/100 for span in spans ]).most_common(5)
-    for k,v in c:
-        print(f"{k:>6}, {v:>4}, {v/len(spans):.2%}")
-    exit()
+    global PDF
+    filename = os.path.join("extract_logs", os.path.basename(PDF)[:-4]+".txt")
+    
+    log_string = "\n\n\n\n\n\n\n\n"
+    log_string += f"{PDF}\n"
+    log_string += f"n_columns={n_columns}\n"
+    log_string += f"top_n_span_x=[{ ','.join([f'{_:.2f}' for _ in top_n_span_x]) }]\n"
 
-    x_left_aligned = Counter([ span['bbox'][0] for span in spans ]).most_common(1)[0][0]
     most_common_fontsize = Counter([ span['size'] for span in spans ]).most_common(1)[0][0]
     most_common_font = Counter([ span['font'] for span in spans ]).most_common(1)[0][0]
     most_common_line_height = Counter([ span['bbox'][3] - span['bbox'][1] for span in spans ]).most_common(1)[0][0]
+
+    log_string += f"most_common_fontsize={most_common_fontsize}\n"
+    log_string += f"most_common_font={most_common_font}\n"
+    log_string += f"most_common_line_height={most_common_line_height}\n"
 
     # logger.info(f"Left aligned x coordinate is {x_left_aligned}")
     # logger.info(f"Most common font size is {most_common_fontsize}")
@@ -145,82 +208,93 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
 
     NUMERALS = ["I.", "II.", "III.", "IV."] # Haven't seen numerals over IV
 
+    ### For each span, find features, and throw the span away if it doesn't meet some criteria
     for i_span in range(-1, len(spans)-1):
         i_span += 1
         span = spans[i_span]
 
-        ### Get features
-        is_bold = span["bold"]
-        is_italic = span["italic"]
-        is_weird_font = span['font'] != most_common_font
-        is_larger_size = most_common_fontsize < span['size']
-        is_left_aligned = abs(span['bbox'][0] - x_left_aligned) < 1
-        is_numeral = any([ span['text'].startswith(n) for n in NUMERALS ])
+        ### UGLY HOTFIX for the Rescue_Robot papers starting from 2019...
+        if span['text'] == 'I. I': span['text'] = '1. Introduction'
+        if span['text'] == 'II. S': span['text'] = '2. System Description'
+        if span['text'] == 'II. O': span['text'] = '2. Overview System'
+        if span['text'] == 'III. A': span['text'] = '3. Application'
+        if span['text'] == 'IV. C': span['text'] = '4. Conclusion'
+
+        ##########################################################################
+        ########################### FEATURE EXTRACTION ###########################
+        features = {}
+        features['is_bold'] = span["bold"]
+        features['is_italic'] = span["italic"]
+        features['is_weird_font'] = span['font'] != most_common_font
+        features['has_larger_than_average_fontsize'] = most_common_fontsize < span['size']
+        features['is_left_aligned'] = any([ abs(span['bbox'][0] - x) < 3 for x in top_n_span_x ])
+        features['is_numeral'] = any([ span['text'].startswith(n) for n in NUMERALS ])
+        features['is_listing'] = re.match(r"^\w{1,2}[\.\)] ", span['text']) is not None             # Check if string starts with e.g. A) or B) or c. or d.
+                
+        # Get the semver level
         possible_semver = span['text'].split(" ")[0]
-
-        if is_numeral:
-
-            print("!!!!!!!!!")
-            print(span['text'])
-            print(is_numeral)
+        features['semver_level'] = 0
+        if Semver.is_major_semver(possible_semver) and Semver.parse(possible_semver).A < 100: features['semver_level'] = 1
+        if Semver.is_minor_semver(possible_semver) and Semver.parse(possible_semver).B < 100: features['semver_level'] = 2
+        if Semver.is_patch_semver(possible_semver) and Semver.parse(possible_semver).C < 100: features['semver_level'] = 3
         
-        semver_level = 0
-        if Semver.is_major_semver(possible_semver) and Semver.parse(possible_semver).A < 100: semver_level = 1
-        if Semver.is_minor_semver(possible_semver) and Semver.parse(possible_semver).B < 100: semver_level = 2
-        if Semver.is_patch_semver(possible_semver) and Semver.parse(possible_semver).C < 100: semver_level = 3
-
         # Find the distance to the span above. Need to search backwards because the spans are for whatever reason not always ordered by y-coordinate (page numbers industrial_logistics__2019__Solidus__0.pdf)
         distance_to_span_above, idx = 0, 0
         while distance_to_span_above <= 0 and 0 < i_span - idx:
             distance_to_span_above = span['bbox_absolute'][1] - spans[i_span-idx]['bbox_absolute'][3]
             idx += 1
-        has_spacing = most_common_line_height < distance_to_span_above
+        features['distance_to_span_above'] = distance_to_span_above
+        features['has_spacing_above'] = most_common_line_height < distance_to_span_above
 
-
-
-        # print()
-        # print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
-        # print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", "N" if is_numeral else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
-    
-
+        ##########################################################################
+        ############################# SPAN FILTERING #############################
 
         ### Skip spans that are presumably not paragraph titles
-        total = is_bold + is_italic + is_weird_font + is_larger_size + is_left_aligned + is_numeral + (0<semver_level)
+        total  = features['is_bold'] + features['is_italic'] + features['is_weird_font'] 
+        total += features['has_larger_than_average_fontsize'] + features['is_left_aligned']
+        total += features['is_numeral'] + (0<features['semver_level']) + features['has_spacing_above']
+        total += features['is_listing']
+
+        # Skip spans with no interesting features    
         if total == 0: continue
-        if span['size'] < most_common_fontsize: continue
-        if span['size'] <= most_common_fontsize and not is_bold and not is_italic and semver_level == 0: continue
+        # Skip spans that have a smaller than normal font size
+        if span['size'] < most_common_fontsize and features["semver_level"] == 0: continue
+        # Skip spans that are probably just text (so not bold, not italic, not whatever. Just plain text)
+        if span['size'] <= most_common_fontsize and not features['is_bold'] and not features['is_italic'] and not features['is_numeral'] and not features['is_listing'] and features['semver_level'] == 0: continue
+        # Skip spans that have only a single character 
         if len(span['text']) <= 1: continue
+        # Skip spans that are probably a table or figure reference
         if span["text"].lower().startswith("fig") or span["text"].lower().startswith("table"): continue
 
+        ### ADDITIONAL FEATURES FOR SPANS AFTER FILTERING (because this is slow)
         # Find if there are any overlapping spans on the left of the current span
-        has_overlap = False
+        has_overlap_left = False
+        has_overlap_right = False
         for span_other in spans:
             if span['page'] != span_other['page']: continue
             if span['id'] == span_other['id']: continue
             if bounding_boxes_overlap_y(span, span_other) < 0.5: continue
-            if span['bbox_absolute'][0] < span_other['bbox_absolute'][0]: continue
-            has_overlap = True
-            break
+            has_overlap_left  |= span_other['bbox_absolute'][0] < span['bbox_absolute'][0]
+            has_overlap_right |= span['bbox_absolute'][0] < span_other['bbox_absolute'][0]
+        features["has_overlap_with_span_left"] = has_overlap_left
+        features["has_overlap_with_span_right"] = has_overlap_right
+
+        log_string += f"span_selected={feature_dict_to_string_for_llm(span, features)}"
+        # print(feature_dict_to_string_for_llm(span, features, align=True), end="")
 
         spans_selected.append(
             {
                 "span": span,
-                "is_bold": is_bold,
-                "is_italic": is_italic,
-                "is_weird_font": is_weird_font,
-                "is_larger_size": is_larger_size,
-                "is_left_aligned": is_left_aligned,
-                "semver_level": semver_level,
-                "has_spacing": has_spacing,
-                "distance_to_span_above": distance_to_span_above,
-                "has_overlap": has_overlap,
+                "features": features
             }
         )
-
-        print()
-        print(f"{span['bbox_absolute'][1]:.2f}", span["text"])
-        print("B" if is_bold else " ", "I" if is_italic else " ", "F" if is_weird_font else " ", "S" if is_larger_size else " ", "L" if is_left_aligned else " ", "N" if is_numeral else " ", semver_level if 0 < semver_level else " ", "D" if has_spacing else " ", f"{span['size']:.2f}", f"{distance_to_span_above:.2f}")
     
+    print(f"Number of selected spans after basic filtering: {len(spans_selected)}")
+
+    ##########################################################################
+    ############################# SPAN FILTERING #############################
+
+    ### Find abstract and reference spans
     span_abstract, span_reference = None, None
     for span in spans_selected:
         if span_abstract is None and "abstract" in span['span']['text'].lower():
@@ -230,77 +304,240 @@ def find_paragraph_headers(spans: list[Span]) -> tuple[list[Span], int, int]:
             span_reference = span['span']
             # logger.info(f"Found references at span y={span_reference['bbox_absolute'][1]}")
 
-    # Remove all selected spans above abstract or below reference
+    ### Remove all selected spans above abstract or below reference
     if span_abstract is not None:
         spans_selected = [ _ for _ in spans_selected if span_abstract['bbox_absolute'][1] <= _['span']['bbox_absolute'][1] ]
     if span_reference is not None:
         spans_selected = [ _ for _ in spans_selected if _['span']['bbox_absolute'][1] <= span_reference['bbox_absolute'][1] ]
 
+    ### Remove abstract span and reference span from selected spans
+    if span_abstract is not None:
+        spans_selected = [ _ for _ in spans_selected if _['span']['id'] != span_abstract['id'] ]
+    if span_reference is not None:
+        spans_selected = [ _ for _ in spans_selected if _['span']['id'] != span_reference['id'] ]
 
-    ### Group spans based on features is_bold, is_italic, font, sinze, left_aligned, semver
-    features = ['is_bold', 'is_italic', 'is_weird_font', 'is_larger_size', 'semver_level', 'has_overlap']
+    print(f"Number of selected spans: {len(spans_selected)}\n")
+
+    if span_abstract is not None:
+        log_string += f"span_abstract_id={span_abstract['id']}\n"
+        log_string += f"span_aostract_text={span_abstract['text']}\n"
+    if span_reference is not None:
+        log_string += f"span_reference_id={span_reference['id']}\n"
+        log_string += f"span_reference_text={span_reference['text']}\n"
+
+    # for _ in spans_selected: print(feature_dict_to_string_for_llm(_["span"], _["features"], align=True), end="")
+
+    ##########################################################################
+    ############################# SPAN GROUPING ##############################
+
+    group_is_semver_group = lambda group: Semver.is_semver(group[0]['span']['text'].split(" ")[0])
+    group_is_list_group = lambda group: all([ re.match(r"^[a-zA-Z][\.\)]\d?\.? ?", _['span']['text']) is not None or re.match(r"^(I|II|III|IV)(\.| )", _['span']['text']) is not None for _ in group ])
+
+    ### Group spans based on some features
+    features = ['is_bold', 'is_italic', 'is_left_aligned', 'is_weird_font', 'is_numeral', 'has_larger_than_average_fontsize', 'semver_level']
     groups = []
     for span in spans_selected:
         found = False
         for group in groups:
-            if all([ span[feature] == group[0][feature] for feature in features ]):
-                group.append(span)
-                found = True
-                break
+            span_ = span['span']
+            first_in_group = group[0]['span']
+            if span_['font'] != first_in_group['font']: continue
+            if 0.2 < abs(span_['size'] - first_in_group['size']): continue
+            if span_['bold'] != first_in_group['bold']: continue
+            if span_['italic'] != first_in_group['italic']: continue
+            if span['features']['semver_level'] != group[0]['features']['semver_level']: continue
+
+            group.append(span)
+            found = True
+            break
+
+
+            # if all([ span['features'][feature] == group[0]['features'][feature] for feature in features ]):
+            #     group.append(span)
+            #     found = True
+            #     break
         if not found:
             groups.append([ span ])
+
+    ### Add group ID to each span
+    for group, char in zip(groups, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+        for _ in group:
+            _["features"]["group"] = char
     
-    # printgroups(groups)
+    ### Do uniformity test on each group, and remove groups that are not uniform nor semver
+    groups_selected = []
+    for group in groups:
+        span_ys = [ _['span']['bbox_absolute'][1] for _ in group ]
+        is_semver_group = group_is_semver_group(group)
+        is_list_group = group_is_list_group(group)
+        is_uniform, p_value, ks_statistic = do_uniformity_test(0, spans[-1]['bbox_absolute'][1], span_ys)
+        is_long_enough = 2 < len(group)
 
-    # Find group with semvers
-    major_group = [ g for g in groups if g[0]['semver_level'] == 1 and Semver.parse(g[0]['span']['text'].split(" ")[0]).A <= 1 ]
-    minor_group = [ g for g in groups if g[0]['semver_level'] == 2 and Semver.parse(g[0]['span']['text'].split(" ")[0]).B <= 1 ]
-    patch_group = [ g for g in groups if g[0]['semver_level'] == 3 and Semver.parse(g[0]['span']['text'].split(" ")[0]).C <= 1 ]
+        group_valid = (is_semver_group or is_list_group) or (is_uniform and is_long_enough)
 
-    spans_final = []
-    if len(major_group) == 1:
-        spans_final += [ _['span'] for _ in major_group[0] ]
-    if len(major_group) == 1 and len(minor_group) == 1:
-        spans_final += [ _['span'] for _ in minor_group[0] ]
-    if len(major_group) == 1 and len(minor_group) == 1 and len(patch_group) == 1:
-        spans_final += [ _['span'] for _ in patch_group[0] ]
+        if group_valid: groups_selected.append(group)
+
+        log_string += f"GROUP - is_valid={group_valid}, is_semver_group={is_semver_group}, is_list_group={is_list_group}, is_uniform={is_uniform}, p_value={p_value:.4f}, ks_statistic={ks_statistic:.4f}\n"
+        for _ in group: log_string += "    " + feature_dict_to_string_for_llm(_["span"], _["features"], align=True)
+        
+        print(f"GROUP - is_valid={group_valid}, is_semver_group={is_semver_group}, is_list_group={is_list_group}, is_uniform={is_uniform}, p_value={p_value:.4f}, ks_statistic={ks_statistic:.4f}")
+        for _ in group: print("   ", feature_dict_to_string_for_llm(_["span"], _["features"], align=True), end="")
+
+    groups = groups_selected
+    
+    spans_selected = [ _ for group in groups for _ in group ]
+    spans_selected = sorted(spans_selected, key=lambda _: _['span']['id'])
+
+    ##########################################################################
+    ############################ SEMVER RESOLVING ############################    
+
+    # Find groups with semvers
+    major_groups = [ g for g in groups if g[0]['features']['semver_level'] == 1 and Semver.parse(g[0]['span']['text'].split(" ")[0]).A <= 1 ]
+    minor_groups = [ g for g in groups if g[0]['features']['semver_level'] == 2 and Semver.parse(g[0]['span']['text'].split(" ")[0]).B <= 1 ]
+    patch_groups = [ g for g in groups if g[0]['features']['semver_level'] == 3 and Semver.parse(g[0]['span']['text'].split(" ")[0]).C <= 1 ]
 
     possible_semver_groups = []
-    for major in major_group:
+    for major in major_groups:
         semver_group1 = [ _['span'] for _ in major ]
         possible_semver_groups.append(semver_group1)
-        for minor in minor_group:
+        for minor in minor_groups:
             semver_group2 = semver_group1[:] + [ _['span'] for _ in minor ]
             possible_semver_groups.append(semver_group2)
-            for patch in patch_group:
+            for patch in patch_groups:
                 semver_group3 = semver_group2[:] + [ _['span'] for _ in patch ]
                 possible_semver_groups.append(semver_group3)
 
-    longest_chain = []
+    
+    for possible_semver_group in possible_semver_groups: 
+        log_string += "semver_group=" + str([_['text'][:_['text'].find(' ')] for _ in possible_semver_group]) + "\n"
+    # print("\nPossible semver groups: ", len(possible_semver_groups))
+    # for possible_semver_group in possible_semver_groups: 
+    #     print("   ", [_['text'][:_['text'].find(' ')] for _ in possible_semver_group])
 
-    for group in possible_semver_groups:
-        # print("\n==GROUP")
-        group = sorted(group, key = lambda s: s['bbox_absolute'][1])
-        # for s in group: print(s['text'])
-        semvers = [ Semver.parse(s['text'].split(" ")[0]) for s in group ]
-        for semver, span in zip(semvers, group):
-            semver.span = span
+    chain = []
+    if 0 < len(possible_semver_groups):
 
-        # print(semvers)
-        resolved_semvers = U.resolve_semvers(semvers)
-        if len(longest_chain) < len(resolved_semvers):
-            longest_chain = [ _.span for _ in resolved_semvers ]
+        ### Calculate longest chain of semvers
+        longest_chain:list[Span] = []
+        for group in possible_semver_groups:
+            # TODO this will break on two-column papers
+            group = sorted(group, key = lambda s: s['bbox_absolute'][1])
+            # Get all semvers from the spans
+            semvers = [ Semver.parse(s['text'].split(" ")[0]) for s in group ]
+            # Hook span underneath Semver so that's its simpler to get the spans back after resolving the semvers. Kinda hacky but it works
+            for semver, span in zip(semvers, group): semver.span = span
 
-    if len(longest_chain) == 0:
-        logger.error(f"Found no semvers")
-        raise Exception("No semvers found")
+            resolved_semvers = U.resolve_semvers(semvers)
+            if len(longest_chain) < len(resolved_semvers):
+                longest_chain = [ _.span for _ in resolved_semvers ]
 
-    ### Sort spans_final by y
-    longest_chain.sort(key=lambda _: _['bbox_absolute'][1])
+
+
+        ##########################################################################
+        ############################# QUALITY CHECK ##############################
+        chain = sorted(longest_chain, key = lambda s: s['bbox_absolute'][1])
+        longest_chain = None # To ensure it's not used again
+
+        chain_str_me = ""
+        for span in chain:
+            semver:Semver = Semver.parse(span['text'].split(" ")[0])
+            depth = 1 + str(semver).count(".")
+            chain_str_me += f"n={span['id']:>4}  w={span['n_words']:>5}  {'|   '*depth}{span['text']}\n"
+        print(chain_str_me)
+        log_string += "chain_str_me\n" + chain_str_me
+
+        chain_y = [ _['bbox_absolute'][1] for _ in chain ]
+        is_uniform, p_value, ks_statistic = do_uniformity_test(0, spans[-1]['bbox_absolute'][1], chain_y)
+        print(f"[quality check] Chain Own is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}")
+        log_string += f"[quality check] Chain Own is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}\n"
+
+        if 5 <= len(chain) and is_uniform:
+            with open(filename, "w") as file: file.write(log_string)
+            return chain, abstract_id, references_id
+
+    ##########################################################################
+    ############################# LLM PROMPTING ##############################
+
+    ### Prepare hints / suggestions for the LLM how to resolve the spans
+    llm_hint=""
+    if len(chain):
+        llm_hint = "["
+        for _ in chain:
+            semver:Semver = Semver.parse(_['text'].split(" ")[0])
+            depth = 1 + str(semver).count(".")
+            llm_hint += f"\n    [{_['id']}, \"{_['text']}\", {depth} ],"
+        llm_hint = llm_hint.strip(",") + "\n]\n"
+
+    ### Prepare LLM input
+    features_string = ""
+    for span in spans_selected:
+        features_string += feature_dict_to_string_for_llm(span['span'], span['features'])
+
+    # print("\nLLM hint:")
+    # print(llm_hint)
+    # print("\nLLM input:")
+    # print(features_string)
+    # print()
+
+    ### Prompt LLM
+    llm_output = llm_client.generate_paragraph_titles(features_string) # [(id, text, level)]
+    
+    get = lambda id : [ _['span'] for _ in spans_selected if _['span']['id'] == id ][0]
+
+    ### Clean LLM output
+    llm_output = sorted(list(set(llm_output)), key=lambda _: _[0])
+    llm_output = [ _ for _ in llm_output if _[2] != 99 ]
+
+    ### Print LLM output
+    chain_str_llm = ""
+    for line, text, indent in llm_output:
+        # if indent == 99: continue
+        chain_str_llm += f"n={line:>4}  w={get(line)['n_words']:>5}  {'|   ' * indent}{text}\n"
+    print("1")
+    print(chain_str_llm)
+    log_string += "chain_str_llm1\n" + chain_str_llm
+    
+    current_level = 0
+    for il, (id, text, level) in enumerate(llm_output):
+        if level == 99: continue
+        if current_level + 1 < level:
+            level = current_level + 1
+        else:
+            current_level = level
+        llm_output[il] = (id, text, level)
+
+    ### Print LLM output
+    chain_str_llm = ""
+    for line, text, indent in llm_output:
+        # if indent == 99: continue
+        chain_str_llm += f"n={line:>4}  w={get(line)['n_words']:>5}  {'|   ' * indent}{text}\n"
+    print("2")
+    print(chain_str_llm)
+    log_string += "chain_str_llm2\n" + chain_str_llm
+    
+    
+    chain_llm = [ get(_[0]) for _ in llm_output ]
+    chain_llm_y = [ _['bbox_absolute'][1] for _ in chain_llm ]
+    is_uniform, p_value, ks_statistic = do_uniformity_test(0, spans[-1]['bbox_absolute'][1], chain_llm_y)
+    print(f"[quality check] Chain LLM is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}")
+
+    log_string += f"len_chainown={len(chain)}\n"
+    log_string += f"len_chain_llm={len(chain_llm)}\n"
+
+    filename = filename[:-4] + "_llm.txt"
+
+    if len(chain) < 3 and len(chain_llm) < 3:
+        filename = filename[:-4] + "_failed.txt"
+        logger.error("Found no semvers")
+        # raise Exception("No semvers found")
+
+    with open(filename, "w") as file: file.write(log_string)
+        
+    chain_llm.sort(key=lambda _: _['id'])
 
     abstract_id = span_abstract['id'] if span_abstract is not None else -1
     references_id = span_reference['id'] if span_reference is not None else 999999
-    return longest_chain, abstract_id, references_id
+    return chain_llm, abstract_id, references_id
 
 def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     if isinstance(pdf, str):
@@ -308,6 +545,8 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
         pdf: fitz.Document = fitz.open(pdf)
 
     logger.info(f"\n\nProcessing {pdf.name}")
+    global PDF
+    PDF = pdf.name
 
     tdp_structure = TDPStructure()
 
@@ -324,54 +563,6 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     
     # Create mask that references all spans that are not normal text spans (figure descriptions, page numbers, paragraph titles, etc)
     spans_id_mask:list[int] = []
-
-    page_width = pdf[0].rect.width
-    half_width = page_width / 2
-    print("half width", half_width)
-    hits = 0
-    n_spans_counted = 0
-    for span in spans:
-        if len(span['text']) <= 5: continue
-        x1,_,x2,_ = span['bbox']
-        hit = x1 < half_width < x2
-        hits += hit
-        n_spans_counted += 1
-        # print(f"{x1:>8.2f} {x2:>8.2f} {hit:>5} {span['text']}")
-
-    f_hits = hits / n_spans_counted
-    col1_hits = 0.1 < f_hits
-    print(f"hits {hits:>4} {f_hits:.2%}")
- 
-    c = Counter([ int(span['bbox'][0]*100)/100 for span in spans ]).most_common(10)
-    
-
-
-    c_merged = {}
-    for k,v in c:
-        if v / n_spans_counted < 0.01: break
-        key = k
-        for k_ in c_merged.keys():
-            if abs(k-k_) < 3:
-                key = k_
-                break
-        if key not in c_merged: c_merged[key] = 0
-        c_merged[key] += v
-    
-    for k,v in c:
-        if v/n_spans_counted < 0.05: continue
-        print(f"{k:>6}, {v:>4}, {v/n_spans_counted:>8.2%}", end="")
-        if k in c_merged:
-            print(f"  {c_merged[k]:>6}, {c_merged[k]/n_spans_counted:8.2%}", end="")
-        print()
-
-    top1, top2 = sorted(c_merged.values(), reverse=True)[:2]
-    top1, top2 = top1/n_spans_counted, top2/n_spans_counted
-
-    print("top1 and 2", top1, top2)
-
-    return f_hits, top1, top2
-
-    return tdp_structure
 
     ### Match images with spans that make up their description
     # Thus, sentences such as "Fig. 5. Render of the proposed redesign of the front assembly"
@@ -393,11 +584,12 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
 
     ### Find all sentences that can make up a paragraph title
     logger.info("======== find_paragraph_headers ========")
-    paragraph_spans, abstract_id, references_id = find_paragraph_headers(spans)
+    n_columns = detect_number_of_columns(pdf[0].rect.width / 2, spans)
+    top_n_span_x = get_most_common_span_x(spans, 2)
+    paragraph_spans, abstract_id, references_id = find_paragraph_headers(spans, n_columns, top_n_span_x)
 
-    print(f"fwefwe0-fwef - {len(paragraph_spans)}")
-    for p in paragraph_spans:
-        print(p['text'])
+    # print(f"fwefwe0-fwef - {len(paragraph_spans)}")
+    return n_columns
 
     # Extend spans_id_mask with found paragraph titles, and abstract id and references id
     spans_id_mask += [ _['id'] for _ in paragraph_spans ]
@@ -482,6 +674,7 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
     spans, images = [], []
 
     current_page_height:float = 0.0
+    total_words:int = 0
 
     for i_page, page in enumerate(doc):
         # Disabled flag 0b1 to get rid of the stupid ligature characters such as ﬀ (CMDragons 2014 page 15, "The oﬀense ratio")
@@ -491,7 +684,7 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
 
         for block in blocks:
             block["page"] = i_page
-
+            
             # Add image
             if "ext" in block:
                 # Skip images that are 'too' small
@@ -518,6 +711,12 @@ def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[I
                         # Filter out spans that are now empty (yes it happens) (ACES 2015)
                         if len(span["text"]) == 0: continue
                         
+                        # Keep track of the number of words. Skip single character spans because these are often not text
+                        if 1 < len(span["text"]):
+                            total_words += len(span["text"].split(' '))
+                        
+                        span['n_words'] = total_words
+
                         # Move y according to the page height
                         x1, y1, x2, y2 = span["bbox"]
                         span["bbox_absolute"] = [x1, y1 + current_page_height, x2, y2 + current_page_height]

@@ -12,26 +12,58 @@ from data_structures.TDPStructure import TDPStructure
 from extraction import extractor
 from blacklist import blacklist
 
+
+
+
+# levels = [1, 1, 3, 3, 3, 3, 3, 1, 2, 3, 3, 2, 3, 3, 1]
+# for il, l in enumerate(levels):
+#     print(f"{'|   ' * l}|- {l}_{il}")
+
+# print("\n")
+
+# current_level = 0
+# for il, l in enumerate(levels):
+#     if current_level + 1 < l:
+#         l = current_level + 1
+#     else:
+#         current_level = l
+#     print(f"{'|   ' * l}|- {l}_{il}")
+# exit()
+
 file_client:LocalFileClient = startup.get_file_client()
 
 col2 = [
     "soccer_smallsize__2010__Khainui__0",
     "soccer_simulation_3d__2017__BehRobot__0", 
     "soccer_simulation_3d__2016__BehRobot__0", 
-    "industrial_atwork__2024__SRB__0"
+    "industrial_atwork__2024__SRB__0",
     "soccer_humanoid_teen__2006__IranFanAvaran__0"
 ]
 
 pdfs, _ = file_client.list_pdfs()
-pdfs = [ pdf.filename for pdf in pdfs if "rescue" not in pdf.filename and pdf.filename not in blacklist and pdf.filename not in col2 ]
 
-# tdp_name = TDPName.from_filepath("soccer_simulation_3d__2010__Apollo__0")
-# pdf_path = file_client.get_pdf(tdp_name, no_copy=True)
-# tdp_structure = extractor.process_pdf(pdf_path)
-# print(tdp_structure)
+# Parse all
+# for pdf in pdfs:
+#     try:
+#         pdf_path = file_client.get_pdf(pdf, no_copy=True)
+#         extractor.process_pdf(pdf_path)
+#     except Exception as e:
+#         print(e)
+#         pass
 # exit()
 
 
+
+
+
+tdp_name = TDPName.from_filepath("rescue_robot__2019__XFinder__0.pdf")
+tdp_name = TDPName.from_filepath("soccer_smallsize__2024__RoboTeam_Twente__0.pdf")
+pdf_path = file_client.get_pdf(tdp_name, no_copy=True)
+tdp_structure = extractor.process_pdf(pdf_path)
+print(tdp_structure)
+exit()
+
+pdfs = [ pdf.filename for pdf in pdfs if "rescue" not in pdf.filename and pdf.filename not in blacklist and pdf.filename not in col2 ]
 
 pdfs_1 = [
     "rescue_robot__2013__AriAnA__0",
@@ -62,7 +94,7 @@ pdfs_1 = [
     "rescue_robot__2015__MRL__0",
     "rescue_robot__2015__PANDORA__0",
     "rescue_robot__2015__RRT-Team__0"
-] + pdfs[:200]
+] + pdfs
 
 pdfs_2 = [
     "rescue_robot__2019__ATR__0",
@@ -88,64 +120,36 @@ pdfs_2 = [
     "rescue_robot__2022__Team_DYNAMICS__0"
 ] + col2
 
-scatter_1col_hits = []
-scatter_1col_top1 = []
-scatter_1col_top2 = []
-scatter_1col_tm1 = []
-scatter_1col_tm2 = []
+for i_pdf, pdf in enumerate(pdfs_1[:200]):
 
-for i_pdf, pdf in enumerate(pdfs_1):
+    if pdf in pdfs_2: continue
     try:
-        print("Processing", i_pdf)
+        print("\n\n\nProcessing", i_pdf, pdf in pdfs_2, pdf)
         tdp_name = TDPName.from_string(pdf)
         pdf_path = file_client.get_pdf(tdp_name, no_copy=True)
-        f_hits, top1, top2 = extractor.process_pdf(pdf_path)
+        n_columns = extractor.process_pdf(pdf_path)
 
-        if f_hits < 0.15:
-            print("???")
+        if n_columns != 1:
+            print("not 1???")
             print(pdf)
-            input()
-
-        scatter_1col_hits.append((f_hits, i_pdf))
-        scatter_1col_top1.append((top1, i_pdf))
-        scatter_1col_top2.append((top2, i_pdf))
+            # input()
         
     except Exception as e:
+        print(e)
         pass
 
-scatter_2col_hits = []
-scatter_2col_top1 = []
-scatter_2col_top2 = []
-scatter_2col_tm1 = []
-scatter_2col_tm2 = []
-
-for i_pdf, pdf in enumerate(pdfs_2):
+for i_pdf, pdf in enumerate(pdfs_2[:200]):
     try:
+        print("\n\n\nProcessing", i_pdf, pdf)
         tdp_name = TDPName.from_string(pdf)
         pdf_path = file_client.get_pdf(tdp_name, no_copy=True)
-        f_hits, top1, top2 = extractor.process_pdf(pdf_path)
+        n_columns = extractor.process_pdf(pdf_path)
 
-        scatter_2col_hits.append((f_hits, i_pdf))
-        scatter_2col_top1.append((top1, i_pdf))
-        scatter_2col_top2.append((top2, i_pdf))
+        if n_columns != 2:
+            print("not 2???")
+            print(pdf)
+            # input()
+
     except Exception as e:
+        print(e)
         pass
-
-min_hits_1col = min([ f for f, _ in scatter_1col_hits ])
-max_hits_2col = max([ f for f, _ in scatter_2col_hits ])
-
-print(f"{max_hits_2col:.2f} < T < {min_hits_1col:.2f}")
-
-
-
-plt.scatter(*zip(*scatter_1col_hits), marker='x', color='orange', label="1 column")
-plt.scatter(*zip(*scatter_2col_hits), color='darkblue', label="2 columns")
-plt.legend()
-plt.show()
-
-plt.scatter(*zip(*scatter_1col_top1), marker='x', color='orange', label="1 column")
-plt.scatter(*zip(*scatter_1col_top2), marker='x', color='red', label="1 column")
-plt.scatter(*zip(*scatter_2col_top1), color='blue', label="2 columns")
-plt.scatter(*zip(*scatter_2col_top2), color='darkblue', label="2 columns")
-plt.legend()
-plt.show()
