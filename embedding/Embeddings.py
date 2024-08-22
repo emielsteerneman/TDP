@@ -93,7 +93,7 @@ class Embeddor:
         else:
             raise NotImplementedError("Batch encoding not implemented yet")
 
-    def embed_sparse_pinecone_bm25(self, text:str | list[str], is_query:bool=False) -> tuple[coo_array, dict]:
+    def embed_sparse_pinecone_bm25(self, text:str | list[str], is_query:bool=False, enable_ngram=False) -> tuple[coo_array, dict]:
         if self.sparse_pinecone_bm25 is None:
             self.sparse_pinecone_bm25 = self.load_default_bm25_encoder()
             
@@ -102,14 +102,35 @@ class Embeddor:
         if is_str:
             tokens = self.sparse_pinecone_bm25._tokenizer(text)
 
+            print("\ntext:", text)
+            
+            if enable_ngram:
+                                
+                import re
+                words = re.findall(r'[\w-]+', text.lower())
+                word_pairs = list(zip(words, words[1:]))
+
+                token_pairs = list(zip(tokens, tokens[1:]))
+                ngrams = []
+                for (w1, w2) in word_pairs:
+                    for (t1, t2) in token_pairs:
+                        if w1.startswith(t1) and w2.startswith(t2):
+                            ngrams.append((t1 + t2))
+                            print(f"  Found 2gram: {w1 + ' ' + w2} -> {t1 + t2}")
+                            break
+            
+                tokens = tokens + ngrams
+                text = " ".join(tokens)
+            
+            # exit()
             if is_query:
                 sparse_dict = self.sparse_pinecone_bm25.encode_queries(text)
             else:
                 sparse_dict = self.sparse_pinecone_bm25.encode_documents(text)
 
             array = coo_array( (sparse_dict['values'], (np.zeros(len(sparse_dict['indices']),dtype=int), sparse_dict['indices']) ) )
-            word_frequences = { word:freq for word, freq in zip(tokens, sparse_dict['values']) }    
-            return array, word_frequences
+            word_frequencies = { word:freq for word, freq in zip(tokens, sparse_dict['values']) }
+            return array, word_frequencies
 
         else:
             raise NotImplementedError("Batch encoding not implemented yet")

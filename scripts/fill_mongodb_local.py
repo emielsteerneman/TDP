@@ -148,7 +148,7 @@ for i_pdf, tdp_name in enumerate(pdfs):
         print(f"\n\n\nProcessing PDF {i_pdf+1:3}/{len(pdfs)} : {tdp_name}")
         profiler.start("load pdf and hash")
         pdf_filepath = file_client.get_pdf(tdp_name, no_copy=True)
-        pdf_filehash = file_client.get_filehash(tdp_name)
+        pdf_filehash = file_client.get_filehash(tdp_name, ext=TDPName.PDF_EXT)
         profiler.stop()
 
         profiler.start("find tdp in metadata")
@@ -158,7 +158,13 @@ for i_pdf, tdp_name in enumerate(pdfs):
         if tdp_db is not None:
             # Already processed. Skip
             if tdp_db.state['process_state'] == ProcessStateEnum.COMPLETED:
-                print(f"Already processed {tdp_name}")
+                # Sanity check. Count number of paragraphs and questions in vector database
+                n_paragraphs = len(vector_client.get_paragraph_chunks_by_tdpname(tdp_name))
+                n_questions = len(vector_client.get_questions_by_tdpname(tdp_name))
+                print(f"Already processed {tdp_name} with {n_paragraphs} paragraphs and {n_questions} questions")
+                if n_paragraphs == 0 or n_questions == 0:
+                    print("Wait what...? No paragraphs or questions?")
+                    input()
                 continue
             
             # Somehow not completed. Remove and reprocess
@@ -213,14 +219,15 @@ for i_pdf, tdp_name in enumerate(pdfs):
                 raise Exception("Reconstruction failed")
 
             for i_chunk, chunk in enumerate(paragraph_chunks):
-                profiler.start("embed dense openai")
-                dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
+                # profiler.start("embed dense openai")
+                # dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
                 profiler.start("embed sparse pinecone")
                 sparse_embedding, _ = embeddor.embed_sparse_pinecone_bm25(chunk.text)
-                profiler.start("store paragraph chunk")
-                vector_client.store_paragraph_chunk(chunk, dense_embedding, sparse_embedding)
+                # profiler.start("store paragraph chunk")
+                # vector_client.store_paragraph_chunk(chunk, dense_embedding, sparse_embedding)
                 profiler.stop()
                 n_chunks_stored += 1
+                continue
 
                 n_questions = len(chunk.text) // 500
                 if 0 < n_questions:
@@ -253,6 +260,7 @@ for i_pdf, tdp_name in enumerate(pdfs):
                             profiler.stop()
                             n_questions_generic_stored += 1
 
+        continue
         profiler.start("update tdp process state")
         metadata_client.update_tdp_process_state(tdp_name, ProcessStateEnum.COMPLETED)
         profiler.stop()

@@ -50,12 +50,14 @@ class PineconeClient(ClientInterface):
 
     INDEX_NAME_PARAGRAPH = "paragraph"
     INDEX_NAME_QUESTION = "question"
+    INDEX_NAME_DEVELOPMENT = "development"
 
     def __init__(self, api_key:str) -> None:
         logger.info("Initializing Pinecone client")
         self.client = Pinecone(api_key=api_key)
         self.index_paragraph = None
         self.index_question = None
+        self.index_development = None
 
     """ Paragraph chunks """
 
@@ -283,6 +285,56 @@ class PineconeClient(ClientInterface):
             self.index_question = self.client.Index(self.INDEX_NAME_QUESTION)
         
         return self.index_question.describe_index_stats().total_vector_count
+
+    """ Development. Basic implementation """
+    
+    def store_item(self, id:str, dense_vector:np.ndarray, sparse_vector:coo_array, metadata:dict=None) -> None:
+        if self.index_development is None:
+            self.index_development = self.client.Index(self.INDEX_NAME_DEVELOPMENT)
+                
+        sparse_vector = SparseValues(indices=sparse_vector.col.tolist(), values=sparse_vector.data.tolist())
+        vector = Vector(id=id, values=dense_vector.tolist(), sparse_values=sparse_vector, metadata=metadata)
+
+        self.index_development.upsert([vector])
+
+    def query_items(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=100, filter:dict=None, include_metadata=True):
+        logger.info(f"Querying index {self.INDEX_NAME_DEVELOPMENT}")
+        if self.index_development is None:
+            self.index_development = self.client.Index(self.INDEX_NAME_DEVELOPMENT)
+        
+        t_start = time.time()
+        response:QueryResponse = self.index_development.query(
+            vector=dense_vector.tolist(),
+            sparse_vector={'indices':sparse_vector.col.tolist(), 'values':sparse_vector.data.tolist()},
+            top_k=limit,
+            include_metadata=include_metadata,
+            filter=filter
+        )
+        t_stop = time.time()
+
+        logger.info(f"Index queried. Duration: {t_stop-t_start:.2f}s")
+        return response
+
+    def delete_items(self):
+        logger.info(f"Deleting all vectors from index {self.INDEX_NAME_DEVELOPMENT}")
+        
+        if self.index_development is None:
+            self.index_development = self.client.Index(self.INDEX_NAME_DEVELOPMENT)
+        
+        # if there actually are entries in the index
+        if 0 < self.index_development.describe_index_stats().total_vector_count:
+            response:dict = self.index_development.delete(delete_all=True)
+            if len(response.keys()) > 0:
+                logger.error(f"Errors occured while deleting from index {self.INDEX_NAME_DEVELOPMENT}")
+                for message in response:
+                    logger.error(message, ":", response[message])
+
+    def count_items(self) -> int:
+        if self.index_development is None:
+            self.index_development = self.client.Index(self.INDEX_NAME_DEVELOPMENT)
+        
+        return self.index_development.describe_index_stats().total_vector_count
+
 
     """ Other """
 

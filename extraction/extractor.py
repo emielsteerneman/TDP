@@ -84,7 +84,7 @@ tdp_blacklist.append("./TDPs/2014/2014_TDP_MRL.pdf")
 """
 
 def do_uniformity_test(range_min:float, range_max:float, points:list[float]) -> float:
-    print(f"[do_uniformity_test] range_min: {range_min}, range_max: {range_max}, points min: {min(points)}, points max: {max(points)}")
+    # print(f"[do_uniformity_test] range_min: {range_min}, range_max: {range_max}, points min: {min(points)}, points max: {max(points)}")
     # Normalize points
     points = [(p - range_min) / (range_max - range_min) for p in points]
     # Perform Kolmogorov-Smirnov test
@@ -351,11 +351,11 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
             found = True
             break
 
-
             # if all([ span['features'][feature] == group[0]['features'][feature] for feature in features ]):
             #     group.append(span)
             #     found = True
             #     break
+
         if not found:
             groups.append([ span ])
 
@@ -380,8 +380,8 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
         log_string += f"GROUP - is_valid={group_valid}, is_semver_group={is_semver_group}, is_list_group={is_list_group}, is_uniform={is_uniform}, p_value={p_value:.4f}, ks_statistic={ks_statistic:.4f}\n"
         for _ in group: log_string += "    " + feature_dict_to_string_for_llm(_["span"], _["features"], align=True)
         
-        print(f"GROUP - is_valid={group_valid}, is_semver_group={is_semver_group}, is_list_group={is_list_group}, is_uniform={is_uniform}, p_value={p_value:.4f}, ks_statistic={ks_statistic:.4f}")
-        for _ in group: print("   ", feature_dict_to_string_for_llm(_["span"], _["features"], align=True), end="")
+        # print(f"GROUP - is_valid={group_valid}, is_semver_group={is_semver_group}, is_list_group={is_list_group}, is_uniform={is_uniform}, p_value={p_value:.4f}, ks_statistic={ks_statistic:.4f}")
+        # for _ in group: print("   ", feature_dict_to_string_for_llm(_["span"], _["features"], align=True), end="")
 
     groups = groups_selected
     
@@ -587,9 +587,6 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
     n_columns = detect_number_of_columns(pdf[0].rect.width / 2, spans)
     top_n_span_x = get_most_common_span_x(spans, 2)
     paragraph_spans, abstract_id, references_id = find_paragraph_headers(spans, n_columns, top_n_span_x)
-
-    # print(f"fwefwe0-fwef - {len(paragraph_spans)}")
-    return n_columns
 
     # Extend spans_id_mask with found paragraph titles, and abstract id and references id
     spans_id_mask += [ _['id'] for _ in paragraph_spans ]

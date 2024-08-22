@@ -3,9 +3,11 @@ import os
 import re
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from collections import Counter
 # Third party libraries
 import matplotlib.pyplot as plt
 import numpy as np
+
 # Local libraries
 # import startup
 # from data_access.file.file_client import LocalFileClient
@@ -20,34 +22,44 @@ files = os.listdir("./extract_logs")
 nwords_total = []
 
 for f in files[:300]:
-    print()
-    print(f)
-    lines = open(f"./extract_logs/{f}").readlines()
-    # print(lines)
+    try:
+        print()
+        print(f)
+        lines = open(f"./extract_logs/{f}").readlines()
+        # print(lines)
 
-    chain_str_me_idx = [ i for i, l in enumerate(lines) if "chain_str_me" in l ][0]
-    quality_check_idx = [ i for i, l in enumerate(lines) if "[quality check]" in l ][0]
+        chain_str_me_idx = [ i for i, l in enumerate(lines) if "chain_str_me" in l ][0]
+        quality_check_idx = [ i for i, l in enumerate(lines) if "[quality check]" in l ][0]
 
-    chain = lines[chain_str_me_idx+1:quality_check_idx]
-    for c in chain: print(c.strip())
+        chain = lines[chain_str_me_idx+1:quality_check_idx]
+        for c in chain: print(c.strip())
 
-    ids_nwords = [ list(map(int, re.findall(r"\d+", c)[:2])) for c in chain ]
-    texts = [ c[c.rfind("|")+1:].strip() for c in chain]
-    ids, nwords = list(zip(*ids_nwords))
+        ids_nwords = [ list(map(int, re.findall(r"\d+", c)[:2])) for c in chain ]
+        texts = [ c[c.rfind("|")+1:].strip() for c in chain]
+        ids, nwords = list(zip(*ids_nwords))
 
-    nwords_diff = np.diff(nwords)
-    nwords_total += list(nwords_diff)
+        nwords_diff = np.diff(nwords)
+        nwords_total += list(nwords_diff)
 
-    print(ids_nwords)
-    print(ids)
-    print(texts)
+        print(ids_nwords)
+        print(ids)
+        print(texts)
 
-    for n, t in zip(nwords_diff, texts):
-        print(f"{n:>4}  {t}")
+        for n, t in zip(nwords_diff, texts):
+            print(f"{n:>4}  {t}")
 
-    if 1000 < np.max(nwords_diff):
-        print("???")
-        input()
+        if 1800 < np.max(nwords_diff):
+            print("???")
+            input()
+
+    except Exception as e:
+        print(e)
+        
 
 plt.hist(nwords_total, bins=50)
 plt.show()
+
+nwords_total = [ int(_/20) * 20 for _ in nwords_total ]
+counter = Counter(nwords_total)
+for k in sorted(counter.keys()):
+    print(k, counter[k])
