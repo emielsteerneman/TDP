@@ -154,7 +154,9 @@ if n_items == 0:
 
 time.sleep(2)
 
-query = "distance resolution"
+# query = "distance resolution"
+# query = "description paper"
+query = "main processing"
 dense_vector = embeddor.embed_dense_openai(query)
 sparse_vector_query, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True, enable_ngram=True)
 keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
@@ -170,10 +172,13 @@ items = vector_client.query_items(dense_vector, sparse_vector_query)
 #     print(text)
 # print()
 
+i_factory = 0
 for item in items['matches']:
     if "2gram" in item['id']:
         text = item['metadata']['text']
-        print(f"{item['id']:>80}", item['score'], text[:100])
+        hit = query in text.lower()
+        print(f"{i_factory:>3}    {item['id']:>80}    {'##' if hit else '  '}    {item['score']:.4f}    {text[:100]}")
+        i_factory += 1
 
 
 # print(keywords)

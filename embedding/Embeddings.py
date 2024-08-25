@@ -1,4 +1,5 @@
 # System libraries
+import mmh3
 import os
 # Third party libraries
 import numpy as np
@@ -93,7 +94,7 @@ class Embeddor:
         else:
             raise NotImplementedError("Batch encoding not implemented yet")
 
-    def embed_sparse_pinecone_bm25(self, text:str | list[str], is_query:bool=False, enable_ngram=False) -> tuple[coo_array, dict]:
+    def embed_sparse_pinecone_bm25(self, text:str | list[str], is_query:bool=False, enable_ngram=False, elevate_ngrams=False) -> tuple[coo_array, dict]:
         if self.sparse_pinecone_bm25 is None:
             self.sparse_pinecone_bm25 = self.load_default_bm25_encoder()
             
@@ -104,22 +105,32 @@ class Embeddor:
 
             print("\ntext:", text)
             
+            ngrams2, ngrams3 = [], []
             if enable_ngram:
                                 
                 import re
                 words = re.findall(r'[\w-]+', text.lower())
-                word_pairs = list(zip(words, words[1:]))
+                word_pairs_ngrams2 = list(zip(words, words[1:]))
+                word_pairs_ngrams3 = list(zip(words, words[1:], words[2:]))
 
-                token_pairs = list(zip(tokens, tokens[1:]))
-                ngrams = []
-                for (w1, w2) in word_pairs:
-                    for (t1, t2) in token_pairs:
+                token_pairs_ngrams2 = list(zip(tokens, tokens[1:]))
+                token_pairs_ngrams3 = list(zip(tokens, tokens[1:], tokens[2:]))
+                ngrams2, ngrams3 = [], []
+                for (w1, w2) in word_pairs_ngrams2:
+                    for (t1, t2) in token_pairs_ngrams2:
                         if w1.startswith(t1) and w2.startswith(t2):
-                            ngrams.append((t1 + t2))
+                            ngrams2.append((t1 + t2))
                             print(f"  Found 2gram: {w1 + ' ' + w2} -> {t1 + t2}")
                             break
-            
-                tokens = tokens + ngrams
+                
+                for (w1, w2, w3) in word_pairs_ngrams3:
+                    for (t1, t2, t3) in token_pairs_ngrams3:
+                        if w1.startswith(t1) and w2.startswith(t2) and w3.startswith(t3):
+                            ngrams3.append((t1 + t2 + t3))
+                            print(f"  Found 3gram: {w1 + ' ' + w2 + ' ' + w3} -> {t1 + t2 + t3}")
+                            break
+
+                tokens = tokens + ngrams2
                 text = " ".join(tokens)
             
             # exit()
@@ -128,8 +139,34 @@ class Embeddor:
             else:
                 sparse_dict = self.sparse_pinecone_bm25.encode_documents(text)
 
+            # Give more weight to 2grams and 3grams
+            if elevate_ngrams:
+                for word in ngrams2:
+                    word_hash = mmh3.hash(word, signed=False) # Same hash function used in ..._bm25.encode_queries and ..._bm25.encode_documents
+                    index_in_array = sparse_dict['indices'].index(word_hash)
+                    value_in_array = sparse_dict['values'][index_in_array]
+                    print(f"  ^^   {word:>20}    {value_in_array:.3f} | hash={word_hash} | index={index_in_array} | value={value_in_array}")
+                    sparse_dict['values'][index_in_array] = value_in_array * 2
+                
+                for word in ngrams3:
+                    word_hash = mmh3.hash(word, signed=False) # Same hash function used in ..._bm25.encode_queries and ..._bm25.encode_documents
+                    index_in_array = sparse_dict['indices'].index(word_hash)
+                    value_in_array = sparse_dict['values'][index_in_array]
+                    print(f"  ^^^^ {word:>20}    {value_in_array:.3f} | hash={word_hash} | index={index_in_array} | value={value_in_array}")
+                    sparse_dict['values'][index_in_array] = value_in_array * 4
+
+
             array = coo_array( (sparse_dict['values'], (np.zeros(len(sparse_dict['indices']),dtype=int), sparse_dict['indices']) ) )
             word_frequencies = { word:freq for word, freq in zip(tokens, sparse_dict['values']) }
+            for word in word_frequencies:
+                # if word in ngrams2:
+                #     word_frequencies[word] *= 2
+                # if word in ngrams3:
+                #     word_frequencies[word] *= 4
+                # _hash = mmh3.hash(word, signed=False)
+                # index_in_array = sparse_dict['indices'].index(_hash)
+                # value_in_array = array['values'][index_in_array]
+                print(f"  {word:>20}    {word_frequencies[word]:.3f}")
             return array, word_frequencies
 
         else:
