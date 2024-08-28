@@ -4,7 +4,6 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import time
 # Third party libraries
-import matplotlib.pyplot as plt
 import numpy as np
 # Local libraries
 import startup
@@ -87,23 +86,6 @@ def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n
 
     return chunks
 
-# text = """To eliminate this issue, we modified the crossbar into three different components 
-# while maintaining the original length of the dribbler, as shown in Figure
-# 2. We 3D printed the two crossbars and water-jetted the motor mount plate using 
-# aluminium to mitigate unnecessary vibrations and potential warping during
-# gameplay. The extruded cable holders on the rear-face of the crossbar have been
-# rotated 90 degrees, and shifted to the top ledge of the crossbar. In addition, the
-# bottom edges at the entrance of the cable holders have been chamfered by 3mm
-# at 45 degrees to prevent sharp edges from cutting into the cables. With these
-# modifications, it allowed us to shift the motor and dribbler gears into the interior 
-# of the left dribbler plate. As a result, we are now able to connect the PCB
-# wires directly to the control board without the possibility of them impeding the
-# dribbler gears. The new design can be seen in Figure 2 above."""
-
-# embeddor.embed_sparse_pinecone_bm25(text, enable_ngram=False)
-# exit()
-
-
 # Query = distance resolution
 # !!! soccer_smallsize__2011__RoboJackets__0
 
@@ -125,42 +107,41 @@ n_items = vector_client.count_items()
 print(f"n_items: {n_items}")
 
 if n_items == 0:
-    p_c = []
+    paragraph_chunks = []
     for paper in papers:
         chunks = []
         paragraphs = get_paragraphs(paper)
         print(f"n_paragraphs: {len(paragraphs)}")
         for p in paragraphs:
-            chunks += create_paragraph_chunks(p, 1000, 200)
-        p_c.append((paper, chunks))
+            chunks += create_paragraph_chunks(p, n_chars_per_group=2000, n_chars_overlap=500)
+        paragraph_chunks.append((paper, chunks))
 
-    for paper, chunks in p_c:
+    for paper, chunks in paragraph_chunks:
         print(f"{paper:<40} {len(paragraphs)}")
         lengths = [ len(_.text) for _ in chunks ]
         print(sorted(lengths))
 
     vector_client.delete_items()
 
-    for paper, chunks in p_c:
+    for paper, chunks in paragraph_chunks:
         for i, c in enumerate(chunks):
             c:ParagraphChunk = c
             
-            sparse_1gram, word_freq_1gram = embeddor.embed_sparse_pinecone_bm25(c.text, enable_ngram=False)
-            sparse_2gram, word_freq_2gram = embeddor.embed_sparse_pinecone_bm25(c.text, enable_ngram=True)
+            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(c.text)
             dense = embeddor.embed_dense_openai(c.text)
 
-            vector_client.store_item(f"{paper}__{c.paragraph_sequence_id}__{c.sequence_id}__ngram_1gram", dense, sparse_1gram, {'text': c.text})
-            vector_client.store_item(f"{paper}__{c.paragraph_sequence_id}__{c.sequence_id}__ngram_2gram", dense, sparse_2gram, {'text': c.text})
+            vector_client.store_item(f"{paper}__{c.paragraph_sequence_id}__{c.sequence_id}", dense, sparse_embedding, {'text': c.text})
 
 time.sleep(2)
 
-# query = "distance resolution"
+query = "distance resolution"
 # query = "description paper"
-query = "main processing"
+# query = "main processing"
+# query = "decision module"
+# query = "how can I apply a distance resolution algorithm?"
 dense_vector = embeddor.embed_dense_openai(query)
-sparse_vector_query, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True, enable_ngram=True)
+sparse_vector_query, keywords = embeddor.embed_sparse_prefitted_bm25(query, is_query=True)
 keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
-
 print(f"Keywords: {keywords}")
 
 items = vector_client.query_items(dense_vector, sparse_vector_query)
@@ -171,14 +152,13 @@ items = vector_client.query_items(dense_vector, sparse_vector_query)
 #     print("\n")
 #     print(text)
 # print()
-
+query = "distance resolution"
 i_factory = 0
 for item in items['matches']:
-    if "2gram" in item['id']:
-        text = item['metadata']['text']
-        hit = query in text.lower()
-        print(f"{i_factory:>3}    {item['id']:>80}    {'##' if hit else '  '}    {item['score']:.4f}    {text[:100]}")
-        i_factory += 1
+    text = item['metadata']['text']
+    hit = query in text.lower()
+    print(f"{i_factory:>3}    {item['id']:>50}    {'##' if hit else '  '}    {item['score']:.4f}    {text[:100]}")
+    i_factory += 1
 
 
 # print(keywords)

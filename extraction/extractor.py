@@ -652,7 +652,20 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
         paragraph.add_images(referenced_images)
 
     return tdp_structure
-                
+
+def process_pdf_get_text(pdf: str | fitz.Document):
+    if isinstance(pdf, str):
+        pdf: fitz.Document = fitz.open(pdf)
+
+    # Extract images and sentences
+    spans, _ = extract_raw_images_and_spans(pdf)
+
+    sentences_raw, sentences_processed = TP.process_raw_spans([ _['text'] for _ in spans ])
+    text_raw = " ".join(sentences_raw)
+    text_processed = " ".join(sentences_processed)
+    
+    return text_raw, text_processed
+
 
 def extract_raw_images_and_spans(doc: fitz.Document) -> tuple[list[Span], list[Image]]:
     """Extract all images and spans from a Fitz document object. See the documentation of the Span and Image classes for

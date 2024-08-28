@@ -138,7 +138,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
     if query is None or query == "": return [], []
 
     dense_vector = embeddor.embed_dense_openai(query)
-    sparse_vector, keywords = embeddor.embed_sparse_pinecone_bm25(query, is_query=True)
+    sparse_vector, keywords = embeddor.embed_sparse_prefitted_bm25(query, is_query=True)
     keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
 
     logger.debug(f"Query: {query}")

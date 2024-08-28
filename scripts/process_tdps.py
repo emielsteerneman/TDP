@@ -22,46 +22,9 @@ from embedding.Embeddings import instance as embeddor
 from extraction import extractor
 from MyLogger import logger
 from simple_profiler import SimpleProfiler
+import startup
 from text_processing.text_processing import reconstruct_paragraph_text
 
-# sem1 = embeddor.embed_sparse_milvus_splade("This is a test test2 bangbang")
-# sem2 = embeddor.embed_sparse_pinecone_bm25("This is a test test2 bangbang")
-
-# print(type(sem1), "\n", sem1)
-# print(type(sem2), "\n", sem2)
-
-PATH = "/home/emiel/Desktop/projects/tdp/static/pdf/"
-
-# weaviate_client = WeaviateClient.default_client()
-# weaviate_client.reset_everything()
-
-file_client:LocalFileClient = LocalFileClient(os.getenv("LOCAL_FILE_ROOT"))
-metadata_client:MongoDBClient = MongoDBClient(os.getenv("MONGODB_CONNECTION_STRING"))
-vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
-llm_client = OpenAIClient()
-
-profiler = SimpleProfiler()
-
-pdfs:list[TDPName] = file_client.list_pdfs()[0]
-
-# pdfs = [ _ for _ in pdfs if "RoboTeam_Twente" in _.filename ]
-pdfs = [ _ for _ in pdfs if "rescue_robot" not in _.filename.lower() ]
-# pdfs = [ _ for _ in pdfs if "soccer_smallsize" not in _.filename.lower() ]
-# pdfs = [ _ for _ in pdfs if "RoboTeam_Twente" in _.filename ]
-# pdfs = [ _ for _ in pdfs if "soccer_smallsize__2010__ODENS__0" in _.filename ]
-
-# pdfs = [ _ for _ in pdfs if "202" in _.filename ]
-
-# now pick a random subset of the pdfs
-# pdfs = np.random.choice(pdfs, 5, replace=False)
-
-print(f"Found {len(pdfs)} PDFs")
-# exit()
-
-n_exceptions = 0
-total_n_tokens = []
-n_max_paragraph_tokens = 0
-paper_max_paragraph_tokens = 0
 
 def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n_chars_overlap:int = 500) -> list[ParagraphChunk]:
     """ Function to split a paragraph into chunks of approximately n_chars_per_group characters, with an overlap of n_chars_overlap characters between
@@ -75,7 +38,7 @@ def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n
     Returns:
         list[ParagraphChunk]: A list of ParagraphChunk objects, each representing a chunk of the paragraph
     """
-
+    # TODO move this function to an utilities file or something
     chunks:list[ParagraphChunk] = []
     sentences:list[str] = [ _.text_raw for _ in paragraph.sentences ]
     lengths = [ len(_)+1 for _ in sentences ]
@@ -121,8 +84,23 @@ def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n
         # If the last sentence is included in this chunk, break. Any other chunks would just be a subset of this last chunk
         if i_end == len(sentences): break
 
-
     return chunks
+
+
+file_client:LocalFileClient = startup.get_file_client()
+metadata_client:MongoDBClient = startup.get_metadata_client()
+vector_client:PineconeClient = startup.get_vector_client()
+llm_client = OpenAIClient()
+
+profiler = SimpleProfiler()
+
+pdfs:list[TDPName] = file_client.list_pdfs()[0]
+print(f"Found {len(pdfs)} PDFs")
+
+n_exceptions = 0
+total_n_tokens = []
+n_max_paragraph_tokens = 0
+paper_max_paragraph_tokens = 0
 
 n_chunks_stored = 0
 n_questions_specific_stored = 0
@@ -155,6 +133,7 @@ for i_pdf, tdp_name in enumerate(pdfs):
         tdp_db = metadata_client.find_tdp_by_name(tdp_name)
         profiler.stop()
 
+        ### Check metadata if this TDP was already processed and if that succeeded
         if tdp_db is not None:
             # Already processed. Skip
             if tdp_db.state['process_state'] == ProcessStateEnum.COMPLETED:
@@ -189,7 +168,7 @@ for i_pdf, tdp_name in enumerate(pdfs):
         tdp = TDP(tdp_name=tdp_name, filehash=pdf_filehash, structure=tdp_structure, process_state=ProcessStateEnum.IN_PROGRESS)
         tdp.propagate_information()
 
-        ### Store in metadata
+        ### Store TDP in metadata
         profiler.start("insert metadata")
         metadata_client.insert_tdp(tdp)
         profiler.stop()
@@ -206,7 +185,7 @@ for i_pdf, tdp_name in enumerate(pdfs):
 
             paragraph_chunks:list[ParagraphChunk] = create_paragraph_chunks(paragraph, n_chars_per_group=2000, n_chars_overlap=500)
 
-            print(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars    {len(paragraph_chunks):2} chunks   {n_chars/n_tokens:.2f} chars/token", [ len(_.text) for _ in paragraph_chunks ])
+            print(f"    {paragraph.text_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token", [ len(_.text) for _ in paragraph_chunks ])
 
             # Reconstruct the paragraph from the chunks
             reconstructed_text = reconstruct_paragraph_text(paragraph_chunks)
@@ -218,53 +197,80 @@ for i_pdf, tdp_name in enumerate(pdfs):
                 print("\n\n")
                 raise Exception("Reconstruction failed")
 
+            # Store locally chunks on disk
             for i_chunk, chunk in enumerate(paragraph_chunks):
-                # profiler.start("embed dense openai")
-                # dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
+                metadata = {
+                    'text': chunk.text,
+                    'start': chunk.start,
+                    'end': chunk.end,
+                    'paragraph_sequence_id': chunk.paragraph_sequence_id,
+                    'chunk_sequence_id': chunk.sequence_id,
+
+                    'tdp_name': chunk.tdp_name.filename,
+                    'paragraph_title': chunk.title,
+                    'league': chunk.tdp_name.league.name,
+                    'team': chunk.tdp_name.team_name.name,
+                    'year': chunk.tdp_name.year
+                }
+
+                chunk_filepath = os.path.join(
+                    file_client.root_dir,
+                    "chunks",
+                    chunk.tdp_name.to_filepath(TDPName.PDF_EXT)[:-4],
+                    f"{chunk.tdp_name}#{chunk.paragraph_sequence_id}__{chunk.sequence_id}.json"
+                )
+                os.makedirs(os.path.dirname(chunk_filepath), exist_ok=True)
+                with open(chunk_filepath, "w") as chunk_file:
+                    chunk_file.write(json.dumps(metadata, indent=4))
+
+            for i_chunk, chunk in enumerate(paragraph_chunks):
+                
+                # Create dense and sparse embedding on chunk text, and store in vector database
+                profiler.start("embed dense openai")
+                dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
                 profiler.start("embed sparse pinecone")
-                sparse_embedding, _ = embeddor.embed_sparse_pinecone_bm25(chunk.text)
-                # profiler.start("store paragraph chunk")
-                # vector_client.store_paragraph_chunk(chunk, dense_embedding, sparse_embedding)
+                sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(chunk.text)
+                profiler.start("store paragraph chunk")
+                vector_client.store_paragraph_chunk(chunk, dense_embedding, sparse_embedding)
                 profiler.stop()
                 n_chunks_stored += 1
-                continue
-
+                
+                # Generate questions
                 n_questions = len(chunk.text) // 500
                 if 0 < n_questions:
                     profiler.start("generate paragraph chunk info")
                     response_obj = llm_client.generate_paragraph_chunk_information(chunk, n_questions)
                     profiler.stop()
-                    # print(chunk.text)
-                    # print(json.dumps(response_obj, indent=4))
 
                     if 'questions_specific' in response_obj:
                         for question in response_obj['questions_specific']:
-                            # print(f"        S? {question}")
+                            print(f"        S? {question}")
                             profiler.start("embed dense openai")
                             dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
                             profiler.start("embed sparse pinecone")
-                            sparse_embedding, _ = embeddor.embed_sparse_pinecone_bm25(question)
+                            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
                             profiler.start("store question")
                             vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
                             profiler.stop()
                             n_questions_specific_stored += 1
+
                     if 'questions_generic' in response_obj:
                         for question in response_obj['questions_generic']:
-                            # print(f"        G? {question}")
+                            print(f"        G? {question}")
                             profiler.start("embed dense openai")
                             dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
                             profiler.start("embed sparse pinecone")
-                            sparse_embedding, _ = embeddor.embed_sparse_pinecone_bm25(question)
+                            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
                             profiler.start("store question")
                             vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
                             profiler.stop()
                             n_questions_generic_stored += 1
 
-        continue
         profiler.start("update tdp process state")
         metadata_client.update_tdp_process_state(tdp_name, ProcessStateEnum.COMPLETED)
         profiler.stop()
         print(f"Current costs: {embeddor.total_costs + llm_client.total_costs:.2f} (Embeddings: {embeddor.total_costs:.2f}  LLM: {llm_client.total_costs:.2f})")
+ 
     except Exception as e:
         n_exceptions += 1
         logger.error(f"Error processing PDF {tdp_name}: {e}")

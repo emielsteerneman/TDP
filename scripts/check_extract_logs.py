@@ -16,7 +16,6 @@ import numpy as np
 # from extraction import extractor
 # from blacklist import blacklist
 
-
 files = os.listdir("./extract_logs")
 
 nwords_total = []
