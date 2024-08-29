@@ -15,10 +15,12 @@ class SimpleProfiler:
         self.current_label = label
         self.current_time_start = time()
 
-    def stop(self):
+    def stop(self) -> float:
         time_stop = time()
 
-        if self.current_label is None: return
+        duration = time_stop - self.current_time_start
+
+        if self.current_label is None: return duration
 
         if self.current_label not in self.measurements:
             self.measurements[self.current_label] = []
@@ -26,12 +28,12 @@ class SimpleProfiler:
         if self.current_label not in self.aggregation:
             self.aggregation[self.current_label] = 0
 
-        duration = time_stop - self.current_time_start
-
         self.measurements[self.current_label].append(duration)
         self.aggregation[self.current_label] += duration
     
         self.current_label = None
+
+        return duration
 
     def print_statistics(self) -> str:
         total_duration = sum(self.aggregation.values())
