@@ -115,6 +115,8 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
             { "team": tdp_name.team_name.name, "year": tdp_name.year, "league": tdp_name.league.name, "index": tdp_name.index },
             { "$set": { "state.process_state": ProcessStateEnum.to_string(process_state), "state.error": error } }
         )
+        logger.info(f"Updated TDP {tdp_name} to state {process_state}")
+
 
     def find_tdps(self, 
             team:str|list[str]=None, 

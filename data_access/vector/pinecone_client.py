@@ -200,11 +200,11 @@ class PineconeClient(ClientInterface):
         
         return [] if not len(response) else response[0]
 
-    def store_question(self, chunk: ParagraphChunk, question: str, dense_vector:np.ndarray, sparse_vector:coo_array) -> None:
+    def store_question(self, chunk: ParagraphChunk, question: str, question_id:str, dense_vector:np.ndarray, sparse_vector:coo_array) -> None:
         if self.index_question is None:
             self.index_question = self.client.Index(self.INDEX_NAME_QUESTION)
         
-        vector_id = chunk.tdp_name.filename + "__" + str(chunk.paragraph_sequence_id) + "__" + str(chunk.sequence_id)
+        vector_id = chunk.tdp_name.filename + "__" + str(chunk.paragraph_sequence_id) + "__" + str(chunk.sequence_id) + "__" + question_id
                 
         metadata = {
             'question': question,
