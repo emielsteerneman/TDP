@@ -95,7 +95,7 @@ llm_client = OpenAIClient()
 profiler = SimpleProfiler()
 
 pdfs:list[TDPName] = file_client.list_pdfs()[0]
-print(f"Found {len(pdfs)} PDFs")
+logger.info(f"Found {len(pdfs)} PDFs")
 
 n_exceptions = 0
 total_n_tokens = []
@@ -106,12 +106,13 @@ n_chunks_stored = 0
 n_questions_specific_stored = 0
 n_questions_generic_stored = 0
 
-print(f"Paragraphs: {vector_client.count_paragraph_chunks()}    Questions: {vector_client.count_questions()}")
+logger.info(f"Paragraphs: {vector_client.count_paragraph_chunks()}    Questions: {vector_client.count_questions()}")
 if vector_client.count_paragraph_chunks() > 0 or vector_client.count_questions() > 0:
     confirmation = input(f"Are you sure you want to process {len(pdfs)} PDFs? (y/n): ")
     if confirmation.lower() != "y":
         print("Exiting")
         exit()
+exit()
 
 # vector_client.delete_paragraph_chunks()
 # vector_client.delete_questions()
@@ -123,7 +124,8 @@ for i_pdf, tdp_name in enumerate(pdfs):
     try:
         ### Load
         if tdp_name.filename in blacklist: continue
-        print(f"\n\n\nProcessing PDF {i_pdf+1:3}/{len(pdfs)} : {tdp_name}")
+
+        logger.info(f"\n\n\n\n\nProcessing PDF {i_pdf+1:3}/{len(pdfs)} : {tdp_name}")
         profiler.start("load pdf and hash")
         pdf_filepath = file_client.get_pdf(tdp_name, no_copy=True)
         pdf_filehash = file_client.get_filehash(tdp_name, ext=TDPName.PDF_EXT)
@@ -140,9 +142,9 @@ for i_pdf, tdp_name in enumerate(pdfs):
                 # Sanity check. Count number of paragraphs and questions in vector database
                 n_paragraphs = len(vector_client.get_paragraph_chunks_by_tdpname(tdp_name))
                 n_questions = len(vector_client.get_questions_by_tdpname(tdp_name))
-                print(f"Already processed {tdp_name} with {n_paragraphs} paragraphs and {n_questions} questions")
+                logger.info(f"Already processed {tdp_name} with {n_paragraphs} paragraphs and {n_questions} questions")
                 if n_paragraphs == 0 or n_questions == 0:
-                    print("Wait what...? No paragraphs or questions?")
+                    logger.info("Wait what...? No paragraphs or questions?")
                     input()
                 continue
             
@@ -153,14 +155,16 @@ for i_pdf, tdp_name in enumerate(pdfs):
             error |= vector_client.delete_questions_by_tdpname(tdp_name)
             if not error: metadata_client.delete_tdp_by_name(tdp_name)
             profiler.stop()
-            print(f"Reprocessing {tdp_name}. State={tdp_db.state['process_state']}. Error={tdp_db.state['error']}")
+            logger.info(f"Reprocessing {tdp_name}. State={tdp_db.state['process_state']}. Error={tdp_db.state['error']}")
 
         ### Parse
         try:
             profiler.start("process pdf")
             tdp_structure:TDPStructure = extractor.process_pdf(pdf_filepath)
-            profiler.stop()
+            duration = profiler.stop()
+            logger.info(f"Processed PDF in {duration:.2f} seconds")
         except Exception as e:
+            profiler.stop()
             logger.error(f"Error processing PDF {tdp_name}: {e}")
             n_exceptions += 1
             continue
@@ -173,6 +177,8 @@ for i_pdf, tdp_name in enumerate(pdfs):
         metadata_client.insert_tdp(tdp)
         profiler.stop()
 
+        logger.info(f"Processing {len(tdp.structure.paragraphs)} paragraphs")
+
         ### Process each paragraph
         for paragraph in tdp.structure.paragraphs:
 
@@ -180,24 +186,25 @@ for i_pdf, tdp_name in enumerate(pdfs):
             n_chars = len(paragraph.content_raw())
 
             if n_chars < 10: 
-                print(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars   SKIPPING")
+                logger.info(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars   SKIPPING")
                 continue
 
             paragraph_chunks:list[ParagraphChunk] = create_paragraph_chunks(paragraph, n_chars_per_group=2000, n_chars_overlap=500)
 
-            print(f"    {paragraph.text_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token", [ len(_.text) for _ in paragraph_chunks ])
+            logger.info(f"    {paragraph.text_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token  {[ len(_.text) for _ in paragraph_chunks ]}")
 
             # Reconstruct the paragraph from the chunks
             reconstructed_text = reconstruct_paragraph_text(paragraph_chunks)
             if paragraph.content_raw() != reconstructed_text:
-                print("!!!!!!!!!!\nParagraph content raw\n")
-                print(paragraph.content_raw())
-                print("\nreconstructed text\n")
-                print(reconstructed_text)
-                print("\n\n")
+                logger.error("!!!!!!!!!!\nParagraph content raw\n")
+                logger.error(paragraph.content_raw())
+                logger.error("\nreconstructed text\n")
+                logger.error(reconstructed_text)
+                logger.error("\n\n")
+                print("!!!! Reconstruction failed !!!!")
                 raise Exception("Reconstruction failed")
 
-            # Store locally chunks on disk
+            # Store chunks locally on disk
             for i_chunk, chunk in enumerate(paragraph_chunks):
                 metadata = {
                     'text': chunk.text,
@@ -222,7 +229,8 @@ for i_pdf, tdp_name in enumerate(pdfs):
                 os.makedirs(os.path.dirname(chunk_filepath), exist_ok=True)
                 with open(chunk_filepath, "w") as chunk_file:
                     chunk_file.write(json.dumps(metadata, indent=4))
-
+            
+            # Store chunks in vector database
             for i_chunk, chunk in enumerate(paragraph_chunks):
                 
                 # Create dense and sparse embedding on chunk text, and store in vector database
@@ -238,39 +246,52 @@ for i_pdf, tdp_name in enumerate(pdfs):
                 # Generate questions
                 n_questions = len(chunk.text) // 500
                 if 0 < n_questions:
+                    logger.info(f"Generating {n_questions} questions")
                     profiler.start("generate paragraph chunk info")
                     response_obj = llm_client.generate_paragraph_chunk_information(chunk, n_questions)
                     profiler.stop()
 
                     if 'questions_specific' in response_obj:
-                        for question in response_obj['questions_specific']:
-                            print(f"        S? {question}")
+                        for i_question, question in enumerate(response_obj['questions_specific']):
+                            # print(f"        S? {question}")
                             profiler.start("embed dense openai")
                             dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
                             profiler.start("embed sparse pinecone")
                             sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
                             profiler.start("store question")
-                            vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
+                            vector_client.store_question(chunk, question, f"s{i_question}", dense_embedding, sparse_embedding)
                             profiler.stop()
                             n_questions_specific_stored += 1
+                    else:
+                        logger.info("No specific questions generated")
 
                     if 'questions_generic' in response_obj:
-                        for question in response_obj['questions_generic']:
-                            print(f"        G? {question}")
+                        for i_question, question in enumerate(response_obj['questions_generic']):
+                            # print(f"        G? {question}")
                             profiler.start("embed dense openai")
                             dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
                             profiler.start("embed sparse pinecone")
                             sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
                             profiler.start("store question")
-                            vector_client.store_question(chunk, question, dense_embedding, sparse_embedding)
+                            vector_client.store_question(chunk, question, f"g{i_question}", dense_embedding, sparse_embedding)
                             profiler.stop()
                             n_questions_generic_stored += 1
+                    else:
+                        logger.info("No generic questions generated")
+
+        logger.info(f"Processed paragraphs")
 
         profiler.start("update tdp process state")
         metadata_client.update_tdp_process_state(tdp_name, ProcessStateEnum.COMPLETED)
         profiler.stop()
-        print(f"Current costs: {embeddor.total_costs + llm_client.total_costs:.2f} (Embeddings: {embeddor.total_costs:.2f}  LLM: {llm_client.total_costs:.2f})")
+        logger.info(f"Current costs: {embeddor.total_costs + llm_client.total_costs:.2f} (Embeddings: {embeddor.total_costs:.2f}  LLM: {llm_client.total_costs:.2f})")
  
+        if i_pdf % 10 == 0:
+            logger.info(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
+            logger.info(f"Stored {n_questions_specific_stored} specific questions")
+            logger.info(f"Stored {n_questions_generic_stored} generic questions")
+            logger.info(profiler.print_statistics())
+
     except Exception as e:
         n_exceptions += 1
         logger.error(f"Error processing PDF {tdp_name}: {e}")
@@ -282,11 +303,11 @@ for i_pdf, tdp_name in enumerate(pdfs):
 
 
 print("\n\n\n")
-for tdp_name in pdfs: print(tdp_name.filename)
+for tdp_name in pdfs: logger.info(tdp_name.filename)
 print("\n")
 
-print(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
-print(f"Stored {n_questions_specific_stored} specific questions")
-print(f"Stored {n_questions_generic_stored} generic questions")
+logger.info(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
+logger.info(f"Stored {n_questions_specific_stored} specific questions")
+logger.info(f"Stored {n_questions_generic_stored} generic questions")
 
-print("Number of PDFS in metadata:", metadata_client.count_tdps())
+logger.info(f"Number of PDFS in metadata: {metadata_client.count_tdps()}")
