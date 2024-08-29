@@ -92,20 +92,23 @@ def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
 
 def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model:str="gpt-4o-mini") -> tuple[str, str]:
     paragraphs, _ = search(vector_client, query, filter)
-
+    # Source offset is needed because sometimes, the paragraph also contains sources, e.g. "[0]" "[1]".
+    # The LLM gets confused when I say source [5] is e.g. TDP RoboTeam 2024, and then some paragraph also
+    # mentions [5] as source. The offset ensures that the sources that I add won't be in any paragraph.
+    SOURCE_OFFSET = 1000
     llm_input = ""
 
     sources = {}
 
     llm_input += "\n"
     for i_paragraph, paragraph in enumerate(paragraphs):
-        llm_input = f"SOURCE : [{i_paragraph}] = {paragraph.tdp_name.filename}\n"
+        llm_input = f"SOURCE : [{i_paragraph+SOURCE_OFFSET}] = {paragraph.tdp_name.filename}\n"
         sources[i_paragraph] = paragraph.tdp_name
     llm_input += "\n"
 
     for i_paragraph, paragraph in enumerate(paragraphs):
         llm_input += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
-        llm_input += f"SOURCE : | id='[{i_paragraph}]', team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
+        llm_input += f"SOURCE : | id='[{i_paragraph+SOURCE_OFFSET}]', team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
         llm_input += f"TEXT : | {paragraph.content_raw()} |"
 
     max_tokens = 0
@@ -128,7 +131,7 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model
 
     for m in matches[::-1]:
         start, end = m.span()
-        source:TDPName = sources[int(llm_response[start+1:end-1])]
+        source:TDPName = sources[int(llm_response[start+1:end-1])-SOURCE_OFFSET]
         url = f"[({source.team_name.name_pretty}, {source.year}, {source.league.name_pretty})](#/tdp/{source.filename}?ref=llm) "
         llm_response = llm_response[:start] + url + llm_response[end:]
 
