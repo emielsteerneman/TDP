@@ -8,7 +8,7 @@ import fitz
 import numpy as np
 from scipy.stats import kstest
 # Local libraries
-from MyLogger import logger
+from MyLogger import dummy_logger as logger
 from .Semver import Semver
 from .Span import Span
 from .Image import Image
@@ -18,6 +18,8 @@ from data_structures.Paragraph import Paragraph
 from data_structures.Sentence import Sentence
 from text_processing import text_processing as TP
 from . import utilities as U
+
+
 
 # PyMuPDF documentation: https://buildmedia.readthedocs.org/media/pdf/pymupdf/latest/pymupdf.pdf
 
@@ -130,7 +132,7 @@ def detect_number_of_columns(page_width_half:float, spans: list[Span]) -> int:
     f_hits = n_hits / n_spans_checked
     n_colums = 1 if 0.1 < f_hits else 2
 
-    print(f"n_hits: {n_hits}, n_spans_checked: {n_spans_checked}, f_hits: {f_hits}, n_colums: {n_colums}")
+    # print(f"n_hits: {n_hits}, n_spans_checked: {n_spans_checked}, f_hits: {f_hits}, n_colums: {n_colums}")
 
     return n_colums
 
@@ -289,7 +291,7 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
             }
         )
     
-    print(f"Number of selected spans after basic filtering: {len(spans_selected)}")
+    # print(f"Number of selected spans after basic filtering: {len(spans_selected)}")
 
     ##########################################################################
     ############################# SPAN FILTERING #############################
@@ -316,7 +318,7 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
     if span_reference is not None:
         spans_selected = [ _ for _ in spans_selected if _['span']['id'] != span_reference['id'] ]
 
-    print(f"Number of selected spans: {len(spans_selected)}\n")
+    # print(f"Number of selected spans: {len(spans_selected)}\n")
 
     if span_abstract is not None:
         log_string += f"span_abstract_id={span_abstract['id']}\n"
@@ -443,12 +445,12 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
             semver:Semver = Semver.parse(span['text'].split(" ")[0])
             depth = 1 + str(semver).count(".")
             chain_str_me += f"n={span['id']:>4}  w={span['n_words']:>5}  {'|   '*depth}{span['text']}\n"
-        print(chain_str_me)
+        # print(chain_str_me)
         log_string += "chain_str_me\n" + chain_str_me
 
         chain_y = [ _['bbox_absolute'][1] for _ in chain ]
         is_uniform, p_value, ks_statistic = do_uniformity_test(0, spans[-1]['bbox_absolute'][1], chain_y)
-        print(f"[quality check] Chain Own is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}")
+        # print(f"[quality check] Chain Own is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}")
         log_string += f"[quality check] Chain Own is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}\n"
 
         if 5 <= len(chain) and is_uniform:
@@ -493,8 +495,8 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
     for line, text, indent in llm_output:
         # if indent == 99: continue
         chain_str_llm += f"n={line:>4}  w={get(line)['n_words']:>5}  {'|   ' * indent}{text}\n"
-    print("1")
-    print(chain_str_llm)
+    # print("1")
+    # print(chain_str_llm)
     log_string += "chain_str_llm1\n" + chain_str_llm
     
     current_level = 0
@@ -511,15 +513,15 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
     for line, text, indent in llm_output:
         # if indent == 99: continue
         chain_str_llm += f"n={line:>4}  w={get(line)['n_words']:>5}  {'|   ' * indent}{text}\n"
-    print("2")
-    print(chain_str_llm)
+    # print("2")
+    # print(chain_str_llm)
     log_string += "chain_str_llm2\n" + chain_str_llm
     
     
     chain_llm = [ get(_[0]) for _ in llm_output ]
     chain_llm_y = [ _['bbox_absolute'][1] for _ in chain_llm ]
     is_uniform, p_value, ks_statistic = do_uniformity_test(0, spans[-1]['bbox_absolute'][1], chain_llm_y)
-    print(f"[quality check] Chain LLM is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}")
+    # print(f"[quality check] Chain LLM is uniform: {is_uniform}, p_value: {p_value:.4f}, ks_statistic: {ks_statistic:.4f}")
 
     log_string += f"len_chainown={len(chain)}\n"
     log_string += f"len_chain_llm={len(chain_llm)}\n"
