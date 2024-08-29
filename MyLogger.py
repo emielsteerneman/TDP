@@ -16,6 +16,8 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 
+dummy_logger = logging.getLogger('dummy')
+
 # os.makedirs("./logs", exist_ok=True)
 
 # # file logger
