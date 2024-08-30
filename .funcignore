@@ -9,14 +9,14 @@
 !requirements.txt
 
 !app.py
-!data_structures
+!blacklist.py
+!bm25_prefitted_on_chunks_sep2024.json
 !data_access
+!data_structures
+!embedding/Embeddings.py
 !MyLogger.py
 !startup.py
-!blacklist.py
 !search.py
 !simple_profiler.py
-!uniqid.py
-!embedding
-!embedding/Embeddings.py
 !text_processing/text_processing.py
+!uniqid.py
