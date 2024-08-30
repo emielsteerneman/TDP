@@ -59,7 +59,7 @@ class MongoDBClient(CacheClient):
         db:pymongo.database.Database = self.client.get_database("cache")
         col:pymongo.collection.Collection = db.get_collection("query")
 
-        idx = col.update_one({"key": key}, { "$set": { "value": value, "timestamp": int(time.time()) } }, upsert=True)
+        idx = col.update_one({"key": key}, { "$set": { "value": value, "timestamp": int(time.time()), "hits": 0 } }, upsert=True)
 
         logger.info(f"Inserted query of length {len(value)} with key {key} with id {idx.upserted_id}")
 
@@ -69,7 +69,7 @@ class MongoDBClient(CacheClient):
         db:pymongo.database.Database = self.client.get_database("cache")
         col:pymongo.collection.Collection = db.get_collection("llm")
 
-        idx = col.update_one({"key": key}, { "$set": { "value": value, "timestamp": int(time.time()) } }, upsert=True)
+        idx = col.update_one({"key": key}, { "$set": { "value": value, "timestamp": int(time.time()), "hits": 0 } }, upsert=True)
 
         logger.info(f"Inserted LLM with key {key} with id {idx.upserted_id}")
 
@@ -83,6 +83,7 @@ class MongoDBClient(CacheClient):
             logger.info(f"Cache miss for query with key {key}")
             return None, None
         
+        col.update_one({ "key": key }, { "$inc": { "hits": 1 } })
         logger.info(f"Cache hit for query with key {key}")
         return query["value"], query["timestamp"]
 
@@ -96,6 +97,7 @@ class MongoDBClient(CacheClient):
             logger.info(f"Cache miss for LLM with key {key}")
             return None, None
         
+        col.update_one({ "key": key }, { "$inc": { "hits": 1 } })
         logger.info(f"Cache hit for LLM with key {key}")
         return llm["value"], llm["timestamp"]
         
