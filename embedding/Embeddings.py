@@ -167,12 +167,12 @@ class Embeddor:
         tokens_nostopwords = self.bm25_tokenizer_nostopwords(text)
         ngrams2, ngrams3 = _find_2grams_3grams(tokens_stopwords, tokens_nostopwords)
 
-        if is_query:
-            print("tokens_stopwords:", tokens_stopwords)
-            print("tokens_nostopwords:", tokens_nostopwords)
+        # if is_query:
+        #     print("tokens_stopwords:", tokens_stopwords)
+        #     print("tokens_nostopwords:", tokens_nostopwords)
 
-            print("ngrams2:", ngrams2)
-            print("ngrams3:", ngrams3)
+        #     print("ngrams2:", ngrams2)
+        #     print("ngrams3:", ngrams3)
 
         tokens = tokens_nostopwords + [ _[0] for _ in ngrams2 ] + [_[0] for _ in ngrams3 ]
 
@@ -213,7 +213,7 @@ class Embeddor:
             idfs_norm = idfs / idfs.sum()               # Normalized Inverse Document Frequencies
 
             for token, idx, df, _idf in zip(tokens, indices, dfs, idfs_norm):
-                print(f"word={token:>20} token={idx:>10} df={df:>6} idf= {_idf:.4f}")
+                logger.info(f"word={token:>20} token={idx:>10} df={df:>6} idf= {_idf:.4f}")
             
             # Create the sparse array from the idf values
             array = coo_array(( idfs_norm, (np.zeros(len(idfs_norm),dtype=int), indices) ))

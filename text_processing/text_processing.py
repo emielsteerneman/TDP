@@ -24,7 +24,8 @@ def split_text_into_sentences(text:str) -> list[str]:
     
     # Find all the indices of the split points
     # Note: Can't use re.split() because it drops the delimiters
-    split_indices = np.array([ m.end() for m in re.finditer("[!?\.] [A-Z0-9]", text) ])
+    end_of_sentence_regex = "(?i)(?<! fig)[\.!?] (?=[A-Z0-9])"
+    split_indices = np.array([ m.end() for m in re.finditer(end_of_sentence_regex, text) ])
     # Append start and end of text
     split_indices = [REGEX_OFFSET] + list(split_indices) + [len(text)+REGEX_OFFSET]
     # Remove duplicates and resort (can happen when " + [len(text)+REGEX_OFFSET]" adds a duplicate )

@@ -17,17 +17,37 @@ from data_structures.Sentence import Sentence
 from data_structures.TDPName import TDPName
 from embedding.Embeddings import instance as embeddor
 from MyLogger import logger
-from text_processing.text_processing import reconstruct_paragraph_text
+from text_processing.text_processing import reconstruct_paragraph_text, split_text_into_sentences
 import re
 
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 llm_client = OpenAIClient()
 
 def summarize_by_sentence(text:str, keywords:list[str]) -> str:
+
+    use_sentence = lambda sentence: any([ _.lower() in sentence.lower() for _ in keywords ])
+
     keywords = [ _.lower() for _ in keywords ]
-    sentences = text.split(".")
-    sentences = [ _.strip() for _ in sentences if any([k in _ for k in keywords]) ]
-    summary = " ... ".join(sentences)
+    sentences = split_text_into_sentences(text)
+
+    sentences_ids = []
+    for i, sentence in enumerate(sentences):
+        if use_sentence(sentence):
+            # Add both the current sentence and the next one
+            sentences_ids.append(i)
+            sentences_ids.append(min(i+1, len(sentences)-1))
+
+    sentences_ids = sorted(list(set(sentences_ids)))
+    
+    summary = ""
+
+    for i, id in enumerate(sentences_ids):
+        summary += sentences[id].strip()
+        if i < len(sentences_ids) - 1:
+            if id + 1 != sentences_ids[i+1]:
+                summary += " ..."
+        summary += " "
+    sentences = [ sentences[id].strip() for id in sentences_ids ]
 
     if not len(summary):
         return text
@@ -217,10 +237,9 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
     # Get questions
     question_matches = response_questions['matches'] # [ id, metadata, score, values ]
     # Get the paragraph chunks that are associated with the questions
-    vector_ids = [match['id'] for match in question_matches]
-    
+    paragraph_chunk_ids_from_questions = list(set([f"{match['metadata']['tdp_name']}__{int(match['metadata']['paragraph_sequence_id'])}__{int(match['metadata']['chunk_sequence_id'])}" for match in question_matches]))
     # Get all paragraph chunks from all questions
-    question_paragraph_chunks = vector_client.get_paragraph_chunks_metadata_by_id(vector_ids) # [ metadata ]
+    question_paragraph_chunks = vector_client.get_paragraph_chunks_metadata_by_id(paragraph_chunk_ids_from_questions) # [ metadata ]
 
     # For all paragraph chunks, prepare or add to the paragraph
     for i_paragraph, metadata in enumerate(question_paragraph_chunks):
@@ -255,16 +274,15 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
     """
 
     # Sort paragraphs by score, high to low
-    pid_paragraphs = sorted(paragraphs.items(), key=lambda x: x[1]['score'], reverse=True)
+    paragraphs_sorted = sorted(paragraphs.values(), key=lambda _: _['score'], reverse=True)
 
-    SOURCES = ""
+    # SOURCES = ""
 
     reconstructed_paragraphs: list[Paragraph] = []
 
-    scores = [ f"{p['score']:.2f}" for pid, p in pid_paragraphs ]
-    print(f"Scores ({len(scores)}):", ", ".join(scores))
+    scores = [ f"{p['score']:.2f}" for p in paragraphs_sorted ]
 
-    for pid, p in pid_paragraphs:
+    for ip, p in enumerate(paragraphs_sorted):
 
         if p['score'] < 0.5: continue
 
@@ -311,8 +329,16 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
 
         reconstructed_paragraphs.append(paragraph)
 
+        # Do some logging that might be interesting
+        if ip < 5:
+            logger.info(f"result: tdpname={paragraph.tdp_name} score={p['score']:.2f}")
+            logger.info(f"result: questions={questions}")
+            logger.info(f"result: text={reconstructed_text}")
+            logger.info("")
+
         # SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
         # SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
         # SOURCES += f"TEXT : | {reconstructed_text} |"
     
+
     return reconstructed_paragraphs, keywords
