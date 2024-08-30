@@ -1,7 +1,7 @@
 azure-storage-blob
 azure-functions
 #flask
-#nltk
+nltk==3.8.1
 numpy
 openai
 pinecone-client
