@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(__file__))
 # Third party libraries
 from dotenv import load_dotenv
 load_dotenv()
+from telegram import Bot
 # Local libraries
 from data_access.metadata.metadata_client import MongoDBClient as MetadataClient
 from data_access.file.file_client import AzureFileClient, LocalFileClient
@@ -17,6 +18,9 @@ metadata_client = None
 file_client = None
 vector_client = None
 cache_client = None
+telegram_bot = None
+telegram_chat_id = None
+
 profiler = SimpleProfiler()
 
 def get_clients() -> tuple[MetadataClient, AzureFileClient|LocalFileClient, PineconeClient]:
@@ -108,6 +112,22 @@ def get_cache_client() -> CacheClient:
     logger.info(f"Cache client for environment {ENVIRONMENT} initialized successfully")
 
     return cache_client
+
+def get_telegram_bot() -> Bot:
+    global telegram_bot
+    global telegram_chat_id
+
+    if telegram_bot is not None:
+        return telegram_bot, telegram_chat_id
+
+    if os.getenv('TELEGRAM_TOKEN') is not None and os.getenv('TELEGRAM_CHAT_ID') is not None:
+        TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+        TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+        telegram_bot = Bot(token=TELEGRAM_TOKEN)
+        telegram_chat_id = TELEGRAM_CHAT_ID
+        logger.info("Created telegram bot")
+
+    return telegram_bot, telegram_chat_id
 
 def get_environment() -> str:
     ENVIRONMENT = os.getenv("ENVIRONMENT")
