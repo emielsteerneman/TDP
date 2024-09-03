@@ -168,6 +168,7 @@ Your task:
     * Add a paragraph ### further research.
     * Add a paragraph ### summary.
     * Respond with at least 10000 characters.
+    * Respond in simple terms. Assume you are talking to a 16 year old. keep it simple to guide people to the correct paper. ELI16.
 
 Question: "{question}"
 
