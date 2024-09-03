@@ -1,7 +1,9 @@
 # System libraries
+import asyncio
 import os
 import json
 from dotenv import load_dotenv
+import threading
 # Third party libraries
 from azure import functions as func
 # Local libraries
@@ -18,9 +20,18 @@ load_dotenv()
 
 azure_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-metadata_client, file_client, vector_client = startup.get_clients()
+metadata_client = startup.get_metadata_client()
+file_client = startup.get_file_client()
+vector_client = startup.get_vector_client()
 
 # https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=linux%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python
+
+def send_to_telegram(text):
+    bot, chat_id = startup.get_telegram_bot()
+    if bot is None: return
+    coroutine = bot.send_message(chat_id=chat_id, text=text)
+    asyncio.set_event_loop(asyncio.SelectorEventLoop())
+    asyncio.get_event_loop().run_until_complete(coroutine)
 
 @azure_app.route('metadata/find')
 def metadata_find(req: func.HttpRequest):
@@ -60,6 +71,11 @@ def api_tdp_pdf(req: func.HttpRequest) -> func.HttpResponse:
     tdp_name:str = req.route_params.get('tdp_name')
     tdp_name:TDPName = TDPName.from_string(tdp_name)
 
+    if startup.get_telegram_bot()[0] is not None:
+        message = f"PDF: {tdp_name}"
+        thread = threading.Thread(target=send_to_telegram, args=[message])
+        thread.start()
+
     if env == "LOCAL":
         with open(f"static/pdf/{tdp_name.to_filepath(TDPName.PDF_EXT)}", "rb") as f:
             pdf_bytes = f.read()
@@ -77,6 +93,11 @@ def api_tdp_html(req: func.HttpRequest) -> func.HttpResponse:
 
     tdp_name:str = req.route_params.get('tdp_name')
     tdp_name:TDPName = TDPName.from_string(tdp_name)
+
+    if startup.get_telegram_bot()[0] is not None:
+        message = f"HTML: {tdp_name}"
+        thread = threading.Thread(target=send_to_telegram, args=[message])
+        thread.start()
 
     if env == "LOCAL":
         with open(f"static/html/{tdp_name.to_filepath(TDPName.HTML_EXT)}", "r") as f:

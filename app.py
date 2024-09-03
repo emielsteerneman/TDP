@@ -1,13 +1,23 @@
 # System libraries
+import asyncio
 import json
+import os
 # Third party libraries
-# Local libraries
-import startup
-from search import search, llm
+from telegram import Bot
 from openai import RateLimitError
-
+# Local libraries
 from data_access.vector.vector_filter import VectorFilter
 from MyLogger import logger
+import startup
+import threading
+from search import search, llm
+
+def send_to_telegram(text):
+    bot, chat_id = startup.get_telegram_bot()
+    if bot is None: return
+    coroutine = bot.send_message(chat_id=chat_id, text=text)
+    asyncio.set_event_loop(asyncio.SelectorEventLoop())
+    asyncio.get_event_loop().run_until_complete(coroutine)
 
 def reduce_tdps(tdps):
     league_map, league_map_inverse = {}, {}
@@ -66,6 +76,13 @@ def api_query(query:str, filter:VectorFilter) -> str:
         cache_key = query.lower() + "_" + str(filter)
         
         cache_hit, timestamp = cache_client.find_query(cache_key)
+
+        if startup.get_telegram_bot()[0] is not None:
+            cached = "(c)" if cache_hit is not None else ""
+            message = f"Query {cached}: {query} | {str(filter)}"
+            thread = threading.Thread(target=send_to_telegram, args=[message])
+            thread.start()
+
         if cache_hit is not None:
             return cache_hit
         
@@ -113,6 +130,13 @@ def api_query_llm(query:str, filter:VectorFilter) -> str:
         cache_key = query.lower() + "_" + str(filter)
         
         cache_hit, timestamp = cache_client.find_llm(cache_key)
+
+        if startup.get_telegram_bot()[0] is not None:
+            cached = "(c)" if cache_hit is not None else ""
+            message = f"LLM {cached}: {query} | {str(filter)}"
+            thread = threading.Thread(target=send_to_telegram, args=[message])
+            thread.start()
+
         if cache_hit is not None:
             return cache_hit
         
