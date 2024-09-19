@@ -1,0 +1,17 @@
+blacklist = {}
+
+blacklist['soccer_smallsize__2012__RoboJackets__0'] = "Full of weird spaces, breaking up words and making it impossible to process"
+blacklist['soccer_simulation_2d__2006__Mersad__0'] = "PyMUpdf can not extract meaningful text from this PDF. Complete garbage."
+blacklist['soccer_simulation_2d__2007__WrightEagle__0'] = "PyMUpdf can not extract meaningful text from this PDF. Complete garbage."
+blacklist['soccer_simulation_2d__2004__CM(Loki)__0'] = "PyMUpdf can not extract meaningful text from this PDF. Complete garbage."
+blacklist['soccer_simulation_2d__2002__ChaGamma__0.pdf'] = "PyMUpdf can not extract meaningful text from this PDF. Complete garbage."
+blacklist['soccer_humanoid_kid__2009__TeamSpirit__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_smallsize__2017__ULtron__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_smallsize__2022__Luhbots__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_simulation_3d__2005__TsubameGaeshi__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_simulation_3d__2013__Rightel__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_simulation_3d__2006__TsubameGaeshi__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_simulation_3d__2007__TsubameGaeshi__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_simulation_2d__2004__Hana__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['soccer_simulation_2d__2002__Hana__0'] = "PyMUpdf can not extract any text from this PDF."
+blacklist['rescue_robot__2019__XFinder__0'] = "Can't properly detect two columns in this PDF."

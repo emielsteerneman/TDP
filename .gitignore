@@ -1,7 +1,15 @@
 __pycache__
 TDPs
+tdps
 *.db
 logfile.txt
 images
 thumbnails
-static/tdps
+webapp/static/tdps
+.env
+.vscode
+static
+logs
+tmp
+weaviate_data
+milvus/volumes

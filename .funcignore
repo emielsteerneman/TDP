@@ -1,0 +1,22 @@
+# https://stackoverflow.com/questions/987142/make-gitignore-ignore-everything-except-a-few-files
+
+# Ignore everything
+*
+
+!function_app.py
+!local.settings.json
+!host.json
+!requirements.txt
+
+!app.py
+!blacklist.py
+!bm25_prefitted_on_chunks_sep2024.json
+!data_access
+!data_structures
+!embedding/Embeddings.py
+!MyLogger.py
+!startup.py
+!search.py
+!simple_profiler.py
+!text_processing/text_processing.py
+!uniqid.py
