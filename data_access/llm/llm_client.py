@@ -26,23 +26,29 @@ class OpenAIClient(LLMClient):
 
     # Costs per token
     api_costs = {
+        "gpt-5-mini": {
+            "input": 0.25 / 1e6,
+            "cached": 0.025 / 1e6,
+            "output": 2.00 / 1e6
+        },
+        "gpt-5-nano": {
+            "input": 0.05 / 1e6,
+            "cached": 0.005 / 1e6, 
+            "output": 0.40 / 1e6
+        },
         "gpt-3.5-turbo-0125": {
             "input": 0.50 / 1e6,
             "output": 1.50 / 1e6
         },
         "gpt-4o": {
-            "input": 5.00 / 1e6,
-            "output": 15.00 / 1e6
+            "input": 2.50 / 1e6,
+            "output": 10.00 / 1e6
         },
         "gpt-4o-2024-05-13": {
             "input": 5.00 / 1e6,
             "output": 15.00 / 1e6
         },
         "gpt-4o-mini": {
-            "input": 0.15 / 1e6,
-            "output": 0.60 / 1e6
-        },
-        "gpt-4o-mini-2024-07-18": {
             "input": 0.15 / 1e6,
             "output": 0.60 / 1e6
         },
