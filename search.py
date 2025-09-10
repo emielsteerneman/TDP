@@ -17,42 +17,11 @@ from data_structures.Sentence import Sentence
 from data_structures.TDPName import TDPName
 from embedding.Embeddings import instance as embeddor
 from MyLogger import logger
-from text_processing.text_processing import reconstruct_paragraph_text, split_text_into_sentences
+from text_processing.text_processing import reconstruct_paragraph_text, split_text_into_sentences, summarize_by_sentence
 import re
 
 vector_client = PineconeClient(os.getenv("PINECONE_API_KEY"))
 llm_client = OpenAIClient()
-
-def summarize_by_sentence(text:str, keywords:list[str]) -> str:
-
-    use_sentence = lambda sentence: any([ _.lower() in sentence.lower() for _ in keywords ])
-
-    keywords = [ _.lower() for _ in keywords ]
-    sentences = split_text_into_sentences(text)
-
-    sentences_ids = []
-    for i, sentence in enumerate(sentences):
-        if use_sentence(sentence):
-            # Add both the current sentence and the next one
-            sentences_ids.append(i)
-            sentences_ids.append(min(i+1, len(sentences)-1))
-
-    sentences_ids = sorted(list(set(sentences_ids)))
-    
-    summary = ""
-
-    for i, id in enumerate(sentences_ids):
-        summary += sentences[id].strip()
-        if i < len(sentences_ids) - 1:
-            if id + 1 != sentences_ids[i+1]:
-                summary += " ..."
-        summary += " "
-    sentences = [ sentences[id].strip() for id in sentences_ids ]
-
-    if not len(summary):
-        return text
-    
-    return summary
 
 def summarize(text:str, keywords:list[str], T=20, N=3) -> str:
 
@@ -134,6 +103,7 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model
     max_tokens = 0
     if "3.5" in model: max_tokens = 16000
     if "4o" in model: max_tokens = 128000
+    if "gpt-5" in model: max_tokens = 400000
 
     if 0 < max_tokens:
         n_tokens = embeddor.count_tokens(llm_input)
@@ -335,6 +305,137 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
             logger.info(f"result: questions={questions}")
             logger.info(f"result: text={reconstructed_text}")
             logger.info("")
+
+        # SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
+        # SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"
+        # SOURCES += f"TEXT : | {reconstructed_text} |"
+    
+
+    return reconstructed_paragraphs, keywords
+
+
+def search_fixed(vector_client:PineconeClient, query:str, filter:VectorFilter=None, compress_text=False) -> tuple[list[Paragraph], list[str]]:
+    if query is None or query == "": return [], []
+
+    dense_vector = embeddor.embed_dense_openai(query)
+    sparse_vector, keywords = embeddor.embed_sparse_prefitted_bm25(query, is_query=True)
+    keywords = [ _ for _ in keywords.keys() if 0.1 < keywords[_] ]
+
+    logger.debug(f"Query: {query}")
+    logger.debug(f"Keywords: {keywords}")
+    logger.debug(f"Filter: {filter}")
+
+    # Get paragraphs and questions from vector database
+    response_paragraph_chunks = vector_client.query_paragraph_chunks(dense_vector, sparse_vector, limit=20, filter=filter)
+
+    """ Paragraph metadata:
+    
+    tdp_name: "soccer_smallsize__2016__Parsian__0"
+    paragraph_sequence_id: 13
+    chunk_sequence_id: 0
+    league: "soccer_smallsize"
+    year: 2016
+    team: "Parsian"
+    paragraph_title: "5.1. Architecture"
+    run_id: "7fc22e94-b9ae-4f57-a647-1f4096696e43"
+    
+    start: 0
+    end: 181
+    text: "This year the software architecture has some minor changes that will be discussed in the next part. Here is The Parisan Software architecture chart (Fig.10). Fig.10. Software chart "
+
+    """
+
+    paragraphs = {}
+
+    # ================ PARAGRAPH CHUNKS ================
+    # Get paragraph chunks
+    paragraph_chunk_matches = response_paragraph_chunks['matches'] # [ id, metadata, score, values ]
+    # Get the questions that are associated with the paragraph chunks
+    vector_ids = [match['id'] for match in paragraph_chunk_matches]
+
+    if not len(vector_ids):
+        logger.debug("No matches found. Returning empty results")        
+        return [], []
+
+    # For all paragraph chunks, prepare or add to the paragraph
+    for _, match in enumerate(paragraph_chunk_matches):
+        metadata = match['metadata']
+        paragraph_id = f"{metadata['tdp_name']}__{int(metadata['paragraph_sequence_id'])}"
+        if paragraph_id not in paragraphs: paragraphs[paragraph_id] = {
+            'score': 0,
+            'chunks': []
+        }
+        paragraphs[paragraph_id]['score'] += match['score']
+        paragraphs[paragraph_id]['chunks'].append(metadata)
+
+    # ================ POST PROCESS ================
+
+    """
+    paragraphs = {
+        "tdp_name__paragraph_sequence_id": {
+            'score': float,
+            'chunks': [ { text, ... } ]
+        }
+    }
+    """
+
+    # Sort paragraphs by score, high to low
+    paragraphs_sorted = sorted(paragraphs.values(), key=lambda _: _['score'], reverse=True)
+
+    # SOURCES = ""
+
+    reconstructed_paragraphs: list[Paragraph] = []
+
+    scores = [ f"{p['score']:.2f}" for p in paragraphs_sorted ]
+
+    for ip, p in enumerate(paragraphs_sorted):
+
+        if p['score'] < 0.5: continue
+
+        first_chunk = p['chunks'][0]
+        tdp_name = TDPName.from_string(first_chunk['tdp_name'])
+        paragraph_title = first_chunk['paragraph_title']
+        paragraph_sequence_id = int(first_chunk['paragraph_sequence_id'])
+
+        # Create paragraph object
+        paragraph = Paragraph(
+            tdp_name=tdp_name,
+            text_raw=paragraph_title,
+            sequence_id=paragraph_sequence_id
+        )
+        
+        # Get a unique list of chunks and sort by chunk_sequence_id
+        chunks_uniq = {} # { chunk_sequence_id: chunk }
+        for chunk in p['chunks']: chunks_uniq[int(chunk['chunk_sequence_id'])] = chunk
+        csid_chunk = sorted(chunks_uniq.items(), key=lambda x: x[0]) # [ (chunk_sequence_id, chunk) ]
+        chunks = [_[1] for _ in csid_chunk]
+
+        # Convert to ParagraphChunk objects
+        chunks = list(map(lambda c: ParagraphChunk(
+            paragraph=paragraph,
+            text=c['text'],
+            sequence_id=int(c['chunk_sequence_id']),
+            start=int(c['start']),
+            end=int(c['end']),
+        ), chunks))
+        
+        # Reconstruct the paragraph text
+        reconstructed_text = reconstruct_paragraph_text(chunks)
+
+        # Compress the text
+        if compress_text:
+            reconstructed_text = summarize_by_sentence(reconstructed_text, keywords)
+
+        # TODO fix ugly hack. Paragraph with single sentence, with that single sentence being all the reconstructed text
+        paragraph.sentences.append(Sentence(text_raw=reconstructed_text))
+
+        reconstructed_paragraphs.append(paragraph)
+
+        # Do some logging that might be interesting
+        # if ip < 5:
+        #     logger.info(f"result: tdpname={paragraph.tdp_name} score={p['score']:.2f}")
+        #     logger.info(f"result: text={reconstructed_text}")
+        #     logger.info("")
 
         # SOURCES += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
         # SOURCES += f"SOURCE : | team='{tdp_name.team_name.name_pretty}', year='{tdp_name.year}', league='{tdp_name.league.name_pretty}', paragraph='{paragraph_title}' |\n"

@@ -74,7 +74,6 @@ def process_raw_spans(spans:list[str]) -> list[list[str], list[str]]:
         
         return sentences_raw, sentences_processed
 
-
 def reconstruct_paragraph_text(chunks:list[ParagraphChunk]) -> str:
     reconstructed_text = ""
     starts = [ _.start for _ in chunks ]
@@ -87,3 +86,34 @@ def reconstruct_paragraph_text(chunks:list[ParagraphChunk]) -> str:
 
     reconstructed_text += chunks[-1].text
     return reconstructed_text.strip()
+
+def summarize_by_sentence(text:str, keywords:list[str]) -> str:
+
+    use_sentence = lambda sentence: any([ _.lower() in sentence.lower() for _ in keywords ])
+
+    keywords = [ _.lower() for _ in keywords ]
+    sentences = split_text_into_sentences(text)
+
+    sentences_ids = []
+    for i, sentence in enumerate(sentences):
+        if use_sentence(sentence):
+            # Add both the current sentence and the next one
+            sentences_ids.append(i)
+            sentences_ids.append(min(i+1, len(sentences)-1))
+
+    sentences_ids = sorted(list(set(sentences_ids)))
+    
+    summary = ""
+
+    for i, id in enumerate(sentences_ids):
+        summary += sentences[id].strip()
+        if i < len(sentences_ids) - 1:
+            if id + 1 != sentences_ids[i+1]:
+                summary += " ..."
+        summary += " "
+    sentences = [ sentences[id].strip() for id in sentences_ids ]
+
+    if not len(summary):
+        return text
+    
+    return summary
