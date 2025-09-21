@@ -25,3 +25,8 @@ class TDPStructure:
             outline += f"\n  {paragraph.text_raw}"
         
         return outline
+    
+    def to_dict(self) -> dict:
+        return {
+            "paragraphs": [ _.to_json_dict() for _ in self.paragraphs ]
+        }

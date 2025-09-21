@@ -33,7 +33,8 @@ class TDP:
         return {
             "tdp_name": self.tdp_name.to_dict(),
             "id": self.id,
-            "filehash": self.filehash
+            "filehash": self.filehash,
+            "structure": self.structure.to_dict()
         }
 
     def print_outlines(self):
@@ -42,10 +43,10 @@ class TDP:
         print(f"  Year: {self.tdp_name.year}")
         print(f"  League: {self.tdp_name.league}")
         
-        # for paragraph in self.paragraphs:
-        #     n_chars = len(paragraph.content_raw())
-        #     print(f"    {paragraph.text_raw.ljust(30)}", end="")
-        #     print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
+        for paragraph in self.structure.paragraphs:
+            n_chars = len(paragraph.content_raw())
+            print(f"    {paragraph.text_raw.ljust(30)}", end="")
+            print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
 
     def print_full(self):
         print("TDP Full")

@@ -24,8 +24,8 @@ def split_text_into_sentences(text:str) -> list[str]:
     
     # Find all the indices of the split points
     # Note: Can't use re.split() because it drops the delimiters
-    end_of_sentence_regex = "(?i)(?<! fig)[\.!?] (?=[A-Z0-9])"
-    split_indices = np.array([ m.end() for m in re.finditer(end_of_sentence_regex, text) ])
+    end_of_sentence_regex = "(?i)(?<!fig)[\.!?] (?=[A-Z0-9])"
+    split_indices = np.array([ m.end() for m in re.finditer(end_of_sentence_regex, text.lower()) ])
     # Append start and end of text
     split_indices = [REGEX_OFFSET] + list(split_indices) + [len(text)+REGEX_OFFSET]
     # Remove duplicates and resort (can happen when " + [len(text)+REGEX_OFFSET]" adds a duplicate )
@@ -87,3 +87,6 @@ def reconstruct_paragraph_text(chunks:list[ParagraphChunk]) -> str:
 
     reconstructed_text += chunks[-1].text
     return reconstructed_text.strip()
+
+if __name__ == "__main__":
+    print(split_text_into_sentences("monitoring and control system (Fig. 6), moving away from traditional on-off switch"))

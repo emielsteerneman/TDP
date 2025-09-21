@@ -1,0 +1,268 @@
+# System libraries
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import json
+# Third party libraries
+import numpy as np
+# Local libraries
+from blacklist import blacklist
+from data_access.metadata.metadata_client import MongoDBClient
+from data_access.file.file_client import LocalFileClient
+from data_access.llm.llm_client import OpenAIClient
+# from data_access.vector.weaviate_client import WeaviateClient
+from data_access.vector.qdrant_client_ import QdrantClient
+from data_structures.Paragraph import Paragraph
+from data_structures.ParagraphChunk import ParagraphChunk
+from data_structures.ProcessStateEnum import ProcessStateEnum
+from data_structures.TDPName import TDPName
+from data_structures.TDP import TDP
+from data_structures.TDPStructure import TDPStructure
+from embedding.Embeddings import instance as embeddor
+from extraction import extractor
+from MyLogger import logger
+from simple_profiler import SimpleProfiler
+import startup
+from text_processing.text_processing import reconstruct_paragraph_text
+
+
+def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n_chars_overlap:int = 500) -> list[ParagraphChunk]:
+    """ Function to split a paragraph into chunks of approximately n_chars_per_group characters, with an overlap of n_chars_overlap characters between
+    each chunk. The function will ensure that no two chunks start at the same sentence, thus avoiding duplicate chunks.
+
+    Args:
+        paragraph (Paragraph): The paragraph to split into chunks
+        n_chars_per_group (int, optional): The desired number of characters of each chunk. Will be equal to or less than this number. Defaults to 2000.
+        n_chars_overlap (int, optional): The number of characters that each chunk should overlap with the previous chunk. Defaults to 500.
+
+    Returns:
+        list[ParagraphChunk]: A list of ParagraphChunk objects, each representing a chunk of the paragraph
+    """
+    # TODO move this function to an utilities file or something
+    chunks:list[ParagraphChunk] = []
+    sentences:list[str] = [ _.text_raw for _ in paragraph.sentences ]
+    lengths = [ len(_)+1 for _ in sentences ]
+    total_length = sum(lengths)
+    cumsum = np.cumsum(lengths)
+    step = n_chars_per_group - n_chars_overlap
+
+    start_prev, end_prev = -1, 999999
+
+    for char_offset in range(0, total_length, step):
+        # Find the first sentence that starts after the offset
+        i_start = np.argmin(cumsum < char_offset)
+        # Find the first sentence that ends after the offset + n_chars_per_group
+        i_end = np.argmax(char_offset + n_chars_per_group <= cumsum)
+
+        # If no sentence ends after the offset + n_chars_per_group, take all sentences from i_start
+        if i_end == 0: i_end = len(sentences)
+        # Ensure that no sentence is skipped
+        if end_prev < i_start: i_start = end_prev
+        # Ensure that no two chunks start at the same sentence, thus avoiding duplicate chunks
+        if i_start <= start_prev: i_start = start_prev + 1
+        # Ensure that the start and end are not the same
+        if i_start == i_end: continue
+        
+        start_prev = i_start
+        end_prev = i_end
+
+        # Create and store chunk
+        chunk_start = int(cumsum[i_start] - lengths[i_start])
+        chunk_end = int(cumsum[i_end-1])
+        chunk_text = " ".join(sentences[i_start:i_end]) + " "
+        chunks.append(ParagraphChunk(paragraph, chunk_text, len(chunks), chunk_start, chunk_end))
+        
+        # print(f"Added chunk {len(chunks):2} with {len(chunk_text):4} characters, from sentence {i_start} to {i_end-1} ({cumsum[i_start]-lengths[i_start]} to {cumsum[i_end-1]}). '{chunk_text[:20]}' ... '{chunk_text[-20:]}'") 
+
+        # If the last chunk is less than 33% of the desired length, merge it with the previous chunk
+        if 1 < len(chunks) and len(chunks[-1].text) < n_chars_per_group * 0.33:
+            # print(f"Merging last chunk with previous chunk")
+            chunks[-2].text = chunks[-2].text[:chunks[-1].start-chunks[-2].start] + chunks[-1].text
+            chunks[-2].end = chunks[-1].end
+            chunks = chunks[:-1]
+
+        # If the last sentence is included in this chunk, break. Any other chunks would just be a subset of this last chunk
+        if i_end == len(sentences): break
+
+    return chunks
+
+
+file_client:LocalFileClient = startup.get_file_client()
+vector_client:QdrantClient = QdrantClient()
+llm_client = OpenAIClient()
+
+profiler = SimpleProfiler()
+
+pdfs:list[TDPName] = file_client.list_pdfs()[0]
+pdfs = [_ for _ in pdfs if _.league.league_minor == "smallsize"]
+pdfs = sorted(pdfs, key=lambda _: _.year, reverse=True)
+logger.info(f"Found {len(pdfs)} PDFs")
+
+n_exceptions = 0
+
+for i_pdf, tdp_name in enumerate(pdfs[:5]):
+    try:
+        ### Load
+        if tdp_name.filename in blacklist: continue
+
+        logger.info(f"\n\n\n\n\nProcessing PDF {i_pdf+1:3}/{len(pdfs)} : {tdp_name}")
+        profiler.start("load pdf and hash")
+        pdf_filepath = file_client.get_pdf(tdp_name, no_copy=True)
+        pdf_filehash = file_client.get_filehash(tdp_name, ext=TDPName.PDF_EXT)
+        profiler.stop()
+
+        ### Parse
+        try:
+            profiler.start("process pdf")
+            tdp_structure:TDPStructure = extractor.process_pdf(pdf_filepath)
+            duration = profiler.stop()
+            logger.info(f"Processed PDF in {duration:.2f} seconds")
+        except Exception as e:
+            profiler.stop()
+            logger.error(f"Error processing PDF {tdp_name}: {e}")
+            n_exceptions += 1
+            continue
+
+        tdp = TDP(tdp_name=tdp_name, filehash=pdf_filehash, structure=tdp_structure, process_state=ProcessStateEnum.IN_PROGRESS)
+        tdp.propagate_information()
+
+        tdp.print_outlines()
+
+        os.makedirs("parsed_tdps", exist_ok=True)
+        with open(f"parsed_tdps/{tdp.tdp_name.filename}.json", "w") as f:
+            f.write(json.dumps(tdp.to_dict(), indent=4))
+        
+        continue
+
+        logger.info(f"Processing {len(tdp.structure.paragraphs)} paragraphs")
+
+        ### Process each paragraph
+        for paragraph in tdp.structure.paragraphs:
+
+            n_tokens = embeddor.count_tokens(paragraph.content_raw())
+            n_chars = len(paragraph.content_raw())
+
+            if n_chars < 10: 
+                logger.info(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars   SKIPPING")
+                continue
+
+            paragraph_chunks:list[ParagraphChunk] = create_paragraph_chunks(paragraph, n_chars_per_group=2000, n_chars_overlap=500)
+
+            logger.info(f"    {paragraph.text_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token  {[ len(_.text) for _ in paragraph_chunks ]}")
+
+            # Reconstruct the paragraph from the chunks
+            reconstructed_text = reconstruct_paragraph_text(paragraph_chunks)
+            if paragraph.content_raw() != reconstructed_text:
+                logger.error("!!!!!!!!!!\nParagraph content raw\n")
+                logger.error(paragraph.content_raw())
+                logger.error("\nreconstructed text\n")
+                logger.error(reconstructed_text)
+                logger.error("\n\n")
+                print("!!!! Reconstruction failed !!!!")
+                raise Exception("Reconstruction failed")
+
+            continue
+
+            # Store chunks locally on disk
+            for i_chunk, chunk in enumerate(paragraph_chunks):
+                metadata = {
+                    'text': chunk.text,
+                    'start': chunk.start,
+                    'end': chunk.end,
+                    'paragraph_sequence_id': chunk.paragraph_sequence_id,
+                    'chunk_sequence_id': chunk.sequence_id,
+
+                    'tdp_name': chunk.tdp_name.filename,
+                    'paragraph_title': chunk.title,
+                    'league': chunk.tdp_name.league.name,
+                    'team': chunk.tdp_name.team_name.name,
+                    'year': chunk.tdp_name.year
+                }
+
+                chunk_filepath = os.path.join(
+                    file_client.root_dir,
+                    "chunks",
+                    chunk.tdp_name.to_filepath(TDPName.PDF_EXT)[:-4],
+                    f"{chunk.tdp_name}#{chunk.paragraph_sequence_id}__{chunk.sequence_id}.json"
+                )
+                os.makedirs(os.path.dirname(chunk_filepath), exist_ok=True)
+                with open(chunk_filepath, "w") as chunk_file:
+                    chunk_file.write(json.dumps(metadata, indent=4))
+            
+            # Store chunks in vector database
+            for i_chunk, chunk in enumerate(paragraph_chunks):
+                
+                # Create dense and sparse embedding on chunk text, and store in vector database
+                profiler.start("embed dense openai")
+                dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
+                profiler.start("embed sparse pinecone")
+                sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(chunk.text)
+                profiler.start("store paragraph chunk")
+                vector_client.store_paragraph_chunk(chunk, dense_embedding, sparse_embedding)
+                profiler.stop()
+                n_chunks_stored += 1
+                
+                # Generate questions
+                n_questions = len(chunk.text) // 500
+                if 0 < n_questions:
+                    logger.info(f"Generating {n_questions} questions")
+                    profiler.start("generate paragraph chunk info")
+                    response_obj = llm_client.generate_paragraph_chunk_information(chunk, n_questions)
+                    profiler.stop()
+
+                    if 'questions_specific' in response_obj:
+                        for i_question, question in enumerate(response_obj['questions_specific']):
+                            # print(f"        S? {question}")
+                            profiler.start("embed dense openai")
+                            dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
+                            profiler.start("embed sparse pinecone")
+                            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
+                            profiler.start("store question")
+                            vector_client.store_question(chunk, question, f"s{i_question}", dense_embedding, sparse_embedding)
+                            profiler.stop()
+                            n_questions_specific_stored += 1
+                    else:
+                        logger.info("No specific questions generated")
+
+                    if 'questions_generic' in response_obj:
+                        for i_question, question in enumerate(response_obj['questions_generic']):
+                            # print(f"        G? {question}")
+                            profiler.start("embed dense openai")
+                            dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
+                            profiler.start("embed sparse pinecone")
+                            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
+                            profiler.start("store question")
+                            vector_client.store_question(chunk, question, f"g{i_question}", dense_embedding, sparse_embedding)
+                            profiler.stop()
+                            n_questions_generic_stored += 1
+                    else:
+                        logger.info("No generic questions generated")
+
+        continue
+        logger.info(f"Processed paragraphs")
+
+        logger.info(f"Current costs: {embeddor.total_costs + llm_client.total_costs:.2f} (Embeddings: {embeddor.total_costs:.2f}  LLM: {llm_client.total_costs:.2f})")
+ 
+        if i_pdf % 10 == 0:
+            logger.info(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
+            logger.info(f"Stored {n_questions_specific_stored} specific questions")
+            logger.info(f"Stored {n_questions_generic_stored} generic questions")
+            logger.info(profiler.print_statistics())
+
+    except Exception as e:
+        n_exceptions += 1
+        logger.error(f"Error processing PDF {tdp_name}: {e}")
+
+    profiler.print_statistics()
+
+exit()
+
+print("\n\n\n")
+for tdp_name in pdfs: logger.info(tdp_name.filename)
+print("\n")
+
+logger.info(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
+logger.info(f"Stored {n_questions_specific_stored} specific questions")
+logger.info(f"Stored {n_questions_generic_stored} generic questions")
+
+logger.info(f"Number of PDFS in metadata: {metadata_client.count_tdps()}")

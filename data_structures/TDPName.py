@@ -45,8 +45,8 @@ class TDPName:
             index = int(index)
         )
 
-    """ Chainable setters """
-
+    # region Chainable setters
+    
     def set_league(self, league:League):
         self.league = league
         return self
@@ -63,7 +63,9 @@ class TDPName:
         self.filehash = filehash
         return self
     
-    """ Other """
+    # endregion
+
+    # region Other
         
     def to_dict(self) -> dict:
         return {
@@ -75,9 +77,11 @@ class TDPName:
 
     def to_filepath(self, ext) -> str:
         return os.path.join(*self.league.to_parts(), str(self.year), self.filename) + f".{ext.strip('.')}"
-    
+
     def __repr__(self):
         return self.filename
 
     def __eq__(self, value: object) -> bool:
         return self.filename == value.filename
+    
+    # endregion

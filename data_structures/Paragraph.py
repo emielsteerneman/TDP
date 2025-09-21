@@ -56,10 +56,11 @@ class Paragraph:
 	def to_dict(self) -> dict:
 		return {
 			"id": self.id,
-			"tdp_name": self.tdp_name,
 			"sequence_id": self.sequence_id,
 			"text_raw": self.text_raw,
 			"text_processed": self.text_processed,
+			"content_raw": [sentence.text_raw for sentence in self.sentences],
+			"content_processed": [sentence.text_processed for sentence in self.sentences],
 			"embedding": self.embedding
 		}
 

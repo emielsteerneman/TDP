@@ -180,6 +180,7 @@ def find_paragraph_headers(spans: list[Span], n_columns:int, top_n_span_x:list[f
     """
 
     global PDF
+    os.makedirs("extract_logs", exist_ok=True)
     filename = os.path.join("extract_logs", os.path.basename(PDF)[:-4]+".txt")
     
     log_string = "\n\n\n\n\n\n\n\n"
