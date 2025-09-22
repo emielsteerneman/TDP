@@ -18,3 +18,4 @@ tiktoken
 #weaviate-client
 #wget
 qdrant-client
+fastembed

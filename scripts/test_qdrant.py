@@ -10,7 +10,7 @@ from blacklist import blacklist
 from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import LocalFileClient
 from data_access.llm.llm_client import OpenAIClient
-# from data_access.vector.weaviate_client import WeaviateClient
+from data_access.embedding.embedding_client import FastembedClient
 from data_access.vector.qdrant_client_ import QdrantClient
 from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
@@ -89,6 +89,7 @@ def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n
 
 file_client:LocalFileClient = startup.get_file_client()
 vector_client:QdrantClient = QdrantClient()
+embed_client:FastembedClient = FastembedClient()
 llm_client = OpenAIClient()
 
 profiler = SimpleProfiler()
@@ -131,8 +132,6 @@ for i_pdf, tdp_name in enumerate(pdfs[:5]):
         os.makedirs("parsed_tdps", exist_ok=True)
         with open(f"parsed_tdps/{tdp.tdp_name.filename}.json", "w") as f:
             f.write(json.dumps(tdp.to_dict(), indent=4))
-        
-        continue
 
         logger.info(f"Processing {len(tdp.structure.paragraphs)} paragraphs")
 
@@ -161,8 +160,7 @@ for i_pdf, tdp_name in enumerate(pdfs[:5]):
                 print("!!!! Reconstruction failed !!!!")
                 raise Exception("Reconstruction failed")
 
-            continue
-
+            """
             # Store chunks locally on disk
             for i_chunk, chunk in enumerate(paragraph_chunks):
                 metadata = {
@@ -188,55 +186,22 @@ for i_pdf, tdp_name in enumerate(pdfs[:5]):
                 os.makedirs(os.path.dirname(chunk_filepath), exist_ok=True)
                 with open(chunk_filepath, "w") as chunk_file:
                     chunk_file.write(json.dumps(metadata, indent=4))
+            """
             
             # Store chunks in vector database
             for i_chunk, chunk in enumerate(paragraph_chunks):
                 
                 # Create dense and sparse embedding on chunk text, and store in vector database
-                profiler.start("embed dense openai")
-                dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
-                profiler.start("embed sparse pinecone")
-                sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(chunk.text)
+                profiler.start("embed dense fastembed")
+                # dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
+                dense_embedding = embed_client.create_text_embedding(chunk.text)
+                # profiler.start("embed sparse pinecone")
+                # sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(chunk.text)
                 profiler.start("store paragraph chunk")
-                vector_client.store_paragraph_chunk(chunk, dense_embedding, sparse_embedding)
+                vector_client.store_paragraph_chunk(chunk, dense_embedding, None)
                 profiler.stop()
                 n_chunks_stored += 1
                 
-                # Generate questions
-                n_questions = len(chunk.text) // 500
-                if 0 < n_questions:
-                    logger.info(f"Generating {n_questions} questions")
-                    profiler.start("generate paragraph chunk info")
-                    response_obj = llm_client.generate_paragraph_chunk_information(chunk, n_questions)
-                    profiler.stop()
-
-                    if 'questions_specific' in response_obj:
-                        for i_question, question in enumerate(response_obj['questions_specific']):
-                            # print(f"        S? {question}")
-                            profiler.start("embed dense openai")
-                            dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
-                            profiler.start("embed sparse pinecone")
-                            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
-                            profiler.start("store question")
-                            vector_client.store_question(chunk, question, f"s{i_question}", dense_embedding, sparse_embedding)
-                            profiler.stop()
-                            n_questions_specific_stored += 1
-                    else:
-                        logger.info("No specific questions generated")
-
-                    if 'questions_generic' in response_obj:
-                        for i_question, question in enumerate(response_obj['questions_generic']):
-                            # print(f"        G? {question}")
-                            profiler.start("embed dense openai")
-                            dense_embedding = embeddor.embed_dense_openai(question, model="text-embedding-3-small")
-                            profiler.start("embed sparse pinecone")
-                            sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(question)
-                            profiler.start("store question")
-                            vector_client.store_question(chunk, question, f"g{i_question}", dense_embedding, sparse_embedding)
-                            profiler.stop()
-                            n_questions_generic_stored += 1
-                    else:
-                        logger.info("No generic questions generated")
 
         continue
         logger.info(f"Processed paragraphs")

@@ -25,6 +25,8 @@ def paragraph_chunk_to_payload(chunk: ParagraphChunk):
         "league_sub": chunk.tdp_name.league.league_sub,
         "team": chunk.tdp_name.team_name.name,
         "year": chunk.tdp_name.year,
+        "title": chunk.title,
+        "text": chunk.text
     }
 
 class QdrantClient(ClientInterface):
@@ -39,7 +41,6 @@ class QdrantClient(ClientInterface):
         self._ensure_paragraph_collection(self.VECTOR_SIZE)
 
     def store_paragraph_chunk(self, chunk: ParagraphChunk, dense_vector:np.ndarray, sparse_vector:coo_array) -> None:
-        
         self.client.upsert(
             collection_name=self.INDEX_NAME_PARAGRAPH,
             points=[
@@ -48,6 +49,7 @@ class QdrantClient(ClientInterface):
                     payload = paragraph_chunk_to_payload(chunk)
                 )
             ])
+        logger.info(f"Upserted '{chunk.title}'")
 
     def query_paragraph_chunks(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter:VectorFilter=None, include_metadata=True) -> list[Paragraph]:
         pass
