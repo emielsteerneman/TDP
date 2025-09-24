@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import dotenv
 import time
+import uuid
 # Third party libraries
 import numpy as np
 from scipy.sparse import coo_array
@@ -16,7 +17,6 @@ from data_access.vector.vector_filter import VectorFilter
 from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
 from MyLogger import logger
-from uniqid import uniqid
 
 def paragraph_chunk_to_payload(chunk: ParagraphChunk):
     return {
@@ -45,12 +45,13 @@ class QdrantClient(ClientInterface):
             collection_name=self.INDEX_NAME_PARAGRAPH,
             points=[
                 PointStruct(
+                    id=str(uuid.uuid4()),
                     vector = {"dense": dense_vector},
                     payload = paragraph_chunk_to_payload(chunk)
                 )
             ])
         logger.info(f"Upserted '{chunk.title}'")
-
+    
     def query_paragraph_chunks(self, dense_vector:np.ndarray, sparse_vector:coo_array, limit:int=10, filter:VectorFilter=None, include_metadata=True) -> list[Paragraph]:
         pass
 
@@ -90,3 +91,14 @@ class QdrantClient(ClientInterface):
             self.client.create_payload_index(collection_name=name, field_name=field, field_schema=schema)
 
         logger.info(f"Collection '{name}' created")
+
+    def _count_paragraph_chunks(self) -> int:
+        result = self.client.count(
+            collection_name=self.INDEX_NAME_PARAGRAPH,
+            exact=True
+        )
+        return result.count
+
+if __name__ == "__main__":
+    client = QdrantClient()
+    print(client._count_paragraph_chunks())
