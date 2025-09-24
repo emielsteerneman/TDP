@@ -100,6 +100,7 @@ pdfs = sorted(pdfs, key=lambda _: _.year, reverse=True)
 logger.info(f"Found {len(pdfs)} PDFs")
 
 n_exceptions = 0
+n_chunks_stored = 0
 
 for i_pdf, tdp_name in enumerate(pdfs[:5]):
     try:
@@ -215,6 +216,7 @@ for i_pdf, tdp_name in enumerate(pdfs[:5]):
             logger.info(profiler.print_statistics())
 
     except Exception as e:
+        raise e
         n_exceptions += 1
         logger.error(f"Error processing PDF {tdp_name}: {e}")
 
