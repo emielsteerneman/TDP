@@ -45,24 +45,14 @@ class TDP:
         
         for paragraph in self.structure.paragraphs:
             n_chars = len(paragraph.content_raw())
-            print(f"    {paragraph.text_raw.ljust(30)}", end="")
+            print(f"    {paragraph.title_raw.ljust(30)}", end="")
             print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
 
     def print_full(self):
         print("TDP Full")
         print(f"  Team: {self.tdp_name.team_name}")
         print(f"  Year: {self.tdp_name.year}")
-        print(f"  League: {self.tdp_name.league}")
-        
-        # for paragraph in self.paragraphs:
-        #     content_raw = paragraph.content_raw()
-        #     content_processed = paragraph.content_processed()
-        #     n_chars = len(content_raw)
-        #     print(f"    {paragraph.text_raw.ljust(30)}", end="")
-        #     print(f" ({len(paragraph.sentences)} sentences, {n_chars} characters, {len(paragraph.images)} images)")
-        #     print(f"      {content_raw}")
-        #     print("\n\n")
-            
+        print(f"  League: {self.tdp_name.league}")           
         print("  End of TDP")
 
     @staticmethod

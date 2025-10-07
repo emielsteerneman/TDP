@@ -48,7 +48,7 @@ for pdf in pdfs:
         pdf_path = file_client.get_pdf(pdf, no_copy=True)
         structure = extractor.process_pdf(pdf_path)
         for paragraph in structure.paragraphs:
-            print(paragraph.text_raw, len(paragraph.content_raw().split(" ")))
+            print(paragraph.title_raw, len(paragraph.content_raw().split(" ")))
     except Exception as e:
         print(e)
         pass

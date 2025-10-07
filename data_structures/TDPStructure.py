@@ -22,11 +22,12 @@ class TDPStructure:
     def outline(self) -> str:
         outline = "TDP outline"
         for paragraph in self.paragraphs:
-            outline += f"\n  {paragraph.text_raw}"
+            outline += f"\n  {paragraph.title_raw}"
         
         return outline
     
     def to_dict(self) -> dict:
         return {
+            "tdp_name": self.tdp_name.to_dict(),
             "paragraphs": [ _.to_json_dict() for _ in self.paragraphs ]
-        }
+        } 

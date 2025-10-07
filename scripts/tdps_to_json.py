@@ -7,11 +7,9 @@ import json
 import numpy as np
 # Local libraries
 from blacklist import blacklist
-from data_access.metadata.metadata_client import MongoDBClient
 from data_access.file.file_client import LocalFileClient
-from data_access.llm.llm_client import OpenAIClient
-from data_access.embedding.embedding_client import FastembedClient
-from data_access.vector.qdrant_client_ import QdrantClient
+# from data_access.vector.weaviate_client import WeaviateClient
+from data_access.vector.pinecone_client import PineconeClient
 from data_structures.Paragraph import Paragraph
 from data_structures.ParagraphChunk import ParagraphChunk
 from data_structures.ProcessStateEnum import ProcessStateEnum
@@ -88,19 +86,22 @@ def create_paragraph_chunks(paragraph:Paragraph, n_chars_per_group:int = 2000, n
 
 
 file_client:LocalFileClient = startup.get_file_client()
-vector_client:QdrantClient = QdrantClient()
-embed_client:FastembedClient = FastembedClient()
-llm_client = OpenAIClient()
-
 profiler = SimpleProfiler()
 
 pdfs:list[TDPName] = file_client.list_pdfs()[0]
-pdfs = [_ for _ in pdfs if _.league.league_minor == "smallsize"]
-pdfs = sorted(pdfs, key=lambda _: _.year, reverse=True)
 logger.info(f"Found {len(pdfs)} PDFs")
 
 n_exceptions = 0
+total_n_tokens = []
+n_max_paragraph_tokens = 0
+paper_max_paragraph_tokens = 0
+
 n_chunks_stored = 0
+n_questions_specific_stored = 0
+n_questions_generic_stored = 0
+
+# metadata_client.drop_tdps()
+# metadata_client.drop_paragraphs()
 
 for i_pdf, tdp_name in enumerate(pdfs[:5]):
     try:
@@ -127,109 +128,23 @@ for i_pdf, tdp_name in enumerate(pdfs[:5]):
 
         tdp = TDP(tdp_name=tdp_name, filehash=pdf_filehash, structure=tdp_structure, process_state=ProcessStateEnum.IN_PROGRESS)
         tdp.propagate_information()
-
-        tdp.print_outlines()
-
-        os.makedirs("parsed_tdps", exist_ok=True)
-        with open(f"parsed_tdps/{tdp.tdp_name.filename}.json", "w") as f:
-            f.write(json.dumps(tdp.to_dict(), indent=4))
-
-        logger.info(f"Processing {len(tdp.structure.paragraphs)} paragraphs")
-
-        ### Process each paragraph
-        for paragraph in tdp.structure.paragraphs:
-
-            n_tokens = embeddor.count_tokens(paragraph.content_raw())
-            n_chars = len(paragraph.content_raw())
-
-            if n_chars < 10: 
-                logger.info(f"    {paragraph.title_raw:50} {n_tokens:4} tokens    {n_chars:5} chars   SKIPPING")
-                continue
-
-            paragraph_chunks:list[ParagraphChunk] = create_paragraph_chunks(paragraph, n_chars_per_group=2000, n_chars_overlap=500)
-
-            logger.info(f"    {paragraph.title_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token  {[ len(_.text) for _ in paragraph_chunks ]}")
-
-            # Reconstruct the paragraph from the chunks
-            reconstructed_text = reconstruct_paragraph_text(paragraph_chunks)
-            if paragraph.content_raw() != reconstructed_text:
-                logger.error("!!!!!!!!!!\nParagraph content raw\n")
-                logger.error(paragraph.content_raw())
-                logger.error("\nreconstructed text\n")
-                logger.error(reconstructed_text)
-                logger.error("\n\n")
-                print("!!!! Reconstruction failed !!!!")
-                raise Exception("Reconstruction failed")
-
-            """
-            # Store chunks locally on disk
-            for i_chunk, chunk in enumerate(paragraph_chunks):
-                metadata = {
-                    'text': chunk.text,
-                    'start': chunk.start,
-                    'end': chunk.end,
-                    'paragraph_sequence_id': chunk.paragraph_sequence_id,
-                    'chunk_sequence_id': chunk.sequence_id,
-
-                    'tdp_name': chunk.tdp_name.filename,
-                    'paragraph_title': chunk.title,
-                    'league': chunk.tdp_name.league.name,
-                    'team': chunk.tdp_name.team_name.name,
-                    'year': chunk.tdp_name.year
-                }
-
-                chunk_filepath = os.path.join(
-                    file_client.root_dir,
-                    "chunks",
-                    chunk.tdp_name.to_filepath(TDPName.PDF_EXT)[:-4],
-                    f"{chunk.tdp_name}#{chunk.paragraph_sequence_id}__{chunk.sequence_id}.json"
-                )
-                os.makedirs(os.path.dirname(chunk_filepath), exist_ok=True)
-                with open(chunk_filepath, "w") as chunk_file:
-                    chunk_file.write(json.dumps(metadata, indent=4))
-            """
-            
-            # Store chunks in vector database
-            for i_chunk, chunk in enumerate(paragraph_chunks):
-                
-                # Create dense and sparse embedding on chunk text, and store in vector database
-                profiler.start("embed dense fastembed")
-                # dense_embedding = embeddor.embed_dense_openai(chunk.text, model="text-embedding-3-small")
-                dense_embedding = embed_client.create_text_embedding(chunk.text)
-                # profiler.start("embed sparse pinecone")
-                # sparse_embedding, _ = embeddor.embed_sparse_prefitted_bm25(chunk.text)
-                profiler.start("store paragraph chunk")
-                vector_client.store_paragraph_chunk(chunk, dense_embedding, None)
-                profiler.stop()
-                n_chunks_stored += 1
-                
-
-        continue
-        logger.info(f"Processed paragraphs")
-
-        logger.info(f"Current costs: {embeddor.total_costs + llm_client.total_costs:.2f} (Embeddings: {embeddor.total_costs:.2f}  LLM: {llm_client.total_costs:.2f})")
- 
-        if i_pdf % 10 == 0:
-            logger.info(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
-            logger.info(f"Stored {n_questions_specific_stored} specific questions")
-            logger.info(f"Stored {n_questions_generic_stored} generic questions")
-            logger.info(profiler.print_statistics())
+        # print(tdp.structure.to_dict())
+        print( json.dumps( tdp.structure.to_dict() ) )
+        
 
     except Exception as e:
-        raise e
         n_exceptions += 1
         logger.error(f"Error processing PDF {tdp_name}: {e}")
+        profiler.start("update tdp process state")
+        profiler.stop()
 
-    profiler.print_statistics()
+    print(profiler.print_statistics())
 
-exit()
 
-print("\n\n\n")
-for tdp_name in pdfs: logger.info(tdp_name.filename)
-print("\n")
+# print("\n\n\n")
+# for tdp_name in pdfs: logger.info(tdp_name.filename)
+# print("\n")
 
 logger.info(f"Stored {n_chunks_stored} chunks over {len(pdfs)} PDFs")
 logger.info(f"Stored {n_questions_specific_stored} specific questions")
 logger.info(f"Stored {n_questions_generic_stored} generic questions")
-
-logger.info(f"Number of PDFS in metadata: {metadata_client.count_tdps()}")

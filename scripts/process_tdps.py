@@ -186,12 +186,12 @@ for i_pdf, tdp_name in enumerate(pdfs):
             n_chars = len(paragraph.content_raw())
 
             if n_chars < 10: 
-                logger.info(f"    {paragraph.text_raw:50} {n_tokens:4} tokens    {n_chars:5} chars   SKIPPING")
+                logger.info(f"    {paragraph.title_raw:50} {n_tokens:4} tokens    {n_chars:5} chars   SKIPPING")
                 continue
 
             paragraph_chunks:list[ParagraphChunk] = create_paragraph_chunks(paragraph, n_chars_per_group=2000, n_chars_overlap=500)
 
-            logger.info(f"    {paragraph.text_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token  {[ len(_.text) for _ in paragraph_chunks ]}")
+            logger.info(f"    {paragraph.title_raw:50} {n_tokens:>4} tokens    {n_chars:>5} chars    {len(paragraph_chunks):>2} chunks   {n_chars/n_tokens:10.2f} chars/token  {[ len(_.text) for _ in paragraph_chunks ]}")
 
             # Reconstruct the paragraph from the chunks
             reconstructed_text = reconstruct_paragraph_text(paragraph_chunks)

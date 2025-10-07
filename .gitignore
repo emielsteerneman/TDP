@@ -13,3 +13,7 @@ logs
 tmp
 weaviate_data
 milvus/volumes
+file_root
+todos
+services/qdrant_data
+extract_logs

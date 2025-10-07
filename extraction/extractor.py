@@ -624,8 +624,8 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
         sentences_raw, sentences_processed = TP.process_raw_spans([ _['text'] for _ in paragraph_bin ])
         
         paragraph = Paragraph(
-            text_raw=title_raw,
-            text_processed=title_processed,
+            title_raw=title_raw,
+            title_processed=title_processed,
         )
 
         tdp_structure.add_paragraph(paragraph)
@@ -638,7 +638,7 @@ def process_pdf(pdf: str | fitz.Document) -> TDPStructure:
             paragraph.add_sentence(sentence)
     
     ### Drop Reference paragraph
-    if tdp_structure.paragraphs[-1].text_raw.lower() == "references":
+    if tdp_structure.paragraphs[-1].title_raw.lower() == "references":
         tdp_structure.paragraphs = tdp_structure.paragraphs[:-1]
 
     """"""""""""""" TDP IS NOW FILLED WITH PARAGRAPHS AND SENTENCES """""""""""""""

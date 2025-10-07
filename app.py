@@ -92,7 +92,7 @@ def api_query(query:str, filter:VectorFilter) -> str:
         for paragraph in paragraphs:
             paragraphs_json.append({
                 'tdp_name': paragraph.tdp_name.to_dict(),
-                'title': paragraph.text_raw,
+                'title': paragraph.title_raw,
                 'content': paragraph.content_raw(),
                 'questions': paragraph.questions,
             })

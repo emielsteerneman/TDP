@@ -128,7 +128,7 @@ def llm(vector_client:PineconeClient, query:str, filter:VectorFilter=None, model
 
     for i_paragraph, paragraph in enumerate(paragraphs):
         llm_input += "\n\n\n\n=============== NEW PARAGRAPH ================\n"
-        llm_input += f"SOURCE : | id='[{i_paragraph+SOURCE_OFFSET}]', team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.text_raw}' |\n"
+        llm_input += f"SOURCE : | id='[{i_paragraph+SOURCE_OFFSET}]', team='{paragraph.tdp_name.team_name.name_pretty}', year='{paragraph.tdp_name.year}', league='{paragraph.tdp_name.league.name_pretty}', paragraph='{paragraph.title_raw}' |\n"
         llm_input += f"TEXT : | {paragraph.content_raw()} |"
 
     max_tokens = 0
@@ -294,7 +294,7 @@ def search(vector_client:PineconeClient, query:str, filter:VectorFilter=None, co
         # Create paragraph object
         paragraph = Paragraph(
             tdp_name=tdp_name,
-            text_raw=paragraph_title,
+            title_raw=paragraph_title,
             sequence_id=paragraph_sequence_id
         )
         

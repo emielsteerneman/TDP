@@ -7,15 +7,14 @@ from .TDPName import TDPName
 class Paragraph:
 	""" Class that represents a paragraph in the database """
 	def __init__(
-     	self, id:int=None, tdp_name:TDPName=None, sequence_id:int=None,
-		text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None,
+     	self, tdp_name:TDPName=None, sequence_id:int=None,
+		title_raw:str=None, title_processed:str=None, embedding:np.ndarray=None,
 		questions:list[str]=None
   	) -> None:
-		self.id = id
 		self.tdp_name = tdp_name
 		self.sequence_id = sequence_id	
-		self.text_raw = text_raw
-		self.text_processed = text_processed
+		self.title_raw = title_raw
+		self.title_processed = title_processed
 		self.embedding = embedding
 		self.questions = questions
 		
@@ -45,20 +44,18 @@ class Paragraph:
 
 	""" Copy all fields from other paragraph to this paragraph if fields in this paragraph are None"""
 	def merge(self, other:Paragraph) -> None:
-		if self.id is None: self.id = other.id
 		if self.tdp_name is None: self.tdp_name = other.tdp_name
 		if self.sequence_id is None: self.sequence_id = other.sequence_id
-		if self.text_raw is None: self.text_raw = other.text_raw
-		if self.text_processed is None: self.text_processed = other.text_processed
+		if self.title_raw is None: self.title_raw = other.title_raw
+		if self.title_processed is None: self.title_processed = other.title_processed
 		if self.embedding is None: self.embedding = other.embedding
 
 	""" Convert paragraph to dict """
 	def to_dict(self) -> dict:
 		return {
-			"id": self.id,
 			"sequence_id": self.sequence_id,
-			"text_raw": self.text_raw,
-			"text_processed": self.text_processed,
+			"title_raw": self.title_raw,
+			"title_processed": self.title_processed,
 			"content_raw": [sentence.text_raw for sentence in self.sentences],
 			"content_processed": [sentence.text_processed for sentence in self.sentences],
 			"embedding": self.embedding
@@ -76,13 +73,13 @@ class Paragraph:
 			id=paragraph["id"],
 			tdp_name=paragraph["tdp_name"],
 			sequence_id=paragraph["sequence_id"],
-			text_raw=paragraph["text_raw"],
-			text_processed=paragraph["text_processed"],
+			title_raw=paragraph["title_raw"],
+			title_processed=paragraph["title_processed"],
 			embedding=paragraph["embedding"]
 		)
   
 	# def __str__(self) -> str:
-	# 	return f"Paragraph(id={self.id}, tdp_name={self.tdp_name}, title={self.text_raw})"
+	# 	return f"Paragraph(tdp_name={self.tdp_name}, title={self.text_raw})"
 
 	# def __dict__(self):
 	# 	return self.to_dict()

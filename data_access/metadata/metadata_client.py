@@ -215,7 +215,7 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
     def insert_paragraph(self, paragraph:Paragraph):
         
         if paragraph.tdp_name is None:
-            raise ValueError(f"TDPName is None for paragraph {paragraph.text_raw}")
+            raise ValueError(f"TDPName is None for paragraph {paragraph.title_raw}")
         
         paragraph_dict = {
             "team": tdp.tdp_name.team_name.name,
@@ -224,7 +224,7 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
             "index": tdp.tdp_name.index,
             "filename": paragraph.tdp_name.filename,
             "sequence_id": paragraph.sequence_id,
-            "title": paragraph.text_raw,
+            "title": paragraph.title_raw,
             "text": paragraph.content_raw(),
         }
 
@@ -232,7 +232,7 @@ class MongoDBClient(MetadataTDPClient, MetadataParagraphClient):
         col:pymongo.collection.Collection = db.get_collection("paragraph")
 
         idx = col.insert_one(paragraph_dict)
-        logger.info(f"Inserted paragraph '{paragraph.text_raw}' with id {idx.inserted_id}")
+        logger.info(f"Inserted paragraph '{paragraph.title_raw}' with id {idx.inserted_id}")
 
     def ensure_collection_paragraph(self):
         # self.client.drop_database("metadata")

@@ -88,10 +88,10 @@ for tdp in tdps:
 #     for paragraph in tdp.paragraphs:
 #         if outlier_threshold < len(paragraph.sentences):
 #             teamyear = f"{tdp.team} {tdp.year}".rjust(35)
-#             print(f"{teamyear}    {len(paragraph.sentences)}    {paragraph.text_raw}")
+#             print(f"{teamyear}    {len(paragraph.sentences)}    {paragraph.title_raw}")
 
 paragraphs_tdps = [ [paragraph, tdp] for tdp in tdps for paragraph in tdp.paragraphs if len(paragraph.sentences) ]
 paragraphs_tdps = sorted(paragraphs_tdps, key=lambda p: len(p[0].sentences), reverse=True)
 for paragraph, tdp in paragraphs_tdps:
     teamyear = f"{tdp.team} {tdp.year}".rjust(35)
-    print(f"{teamyear}    {len(paragraph.sentences)}    {paragraph.text_raw}")
+    print(f"{teamyear}    {len(paragraph.sentences)}    {paragraph.title_raw}")

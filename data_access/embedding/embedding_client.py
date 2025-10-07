@@ -25,12 +25,15 @@ class ClientInterface(ABC):
 from fastembed import TextEmbedding
 
 class FastembedClient(ClientInterface):
-    MODEL_NAME = "BAAI/bge-small-en-v1.5"
-    # MODEL_NAME = "BAAI/bge-base-en-v1.5"
-    # MODEL_NAME = "BAAI/bge-large-en-v1.5"
+    MODEL_NAME = "BAAI/bge-base-en-v1.5"
 
     def __init__(self):
-        self.model = TextEmbedding(model_name=self.MODEL_NAME)
+        for m in TextEmbedding.list_supported_models():
+            print(m["model"].rjust(70), "  ", m["sources"]["hf"])
+            # for k, v in m["sources"].items():
+            #     print(f"  {k} : {v}")
+
+        self.model = TextEmbedding(model_name=self.MODEL_NAME, cache_dir="/home/emiel/Desktop/projects/fastembed_cache")
         logger.info(f"The model {self.model.model_name} is ready to use.")
         logger.info(self.model.get_embedding_size(self.model.model_name))
 

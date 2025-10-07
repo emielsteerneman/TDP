@@ -33,7 +33,7 @@ class QdrantClient(ClientInterface):
 
     INDEX_NAME_PARAGRAPH = "paragraph"
 
-    VECTOR_SIZE = 384
+    VECTOR_SIZE = 768
 
     def __init__(self):
         logger.info("Initializing Qdrant client")
@@ -99,6 +99,45 @@ class QdrantClient(ClientInterface):
         )
         return result.count
 
+    def _delete_paragraph_collection(self):
+        self.client.delete_collection(collection_name=self.INDEX_NAME_PARAGRAPH)
+
+    def _fill_with_mock_data(self):
+        self.client.delete_collection(collection_name="mock")
+        self.client.create_collection(
+            collection_name="mock",
+            vectors_config={
+                "dense": VectorParams(
+                    size=768, 
+                    distance=Distance.COSINE
+                )
+            }
+        )
+
+        from data_access.embedding.embedding_client import FastembedClient
+        embed_client = FastembedClient()
+
+        texts = [
+            "Hello World! What's up",
+            "Hello darkness my old friend",
+            "Are you still there?"
+        ]
+
+        for t in texts:
+            dense_embedding = embed_client.create_text_embedding(t)
+            self.client.upsert(
+                collection_name="mock",
+                points=[
+                    PointStruct(
+                        id=str(uuid.uuid4()),
+                        vector = {"dense": dense_embedding},
+                        payload = { "text" : t }
+                    )
+                ])
+            logger.info(f"Python : Upserted {t}")# : {dense_embedding[:5]}")
+
+
 if __name__ == "__main__":
     client = QdrantClient()
     print(client._count_paragraph_chunks())
+    client._fill_with_mock_data()

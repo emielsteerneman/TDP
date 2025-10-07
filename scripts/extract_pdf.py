@@ -22,7 +22,7 @@ def process(pdf_path:str):
 
     tdp_structure:TDPStructure = extractor.process_pdf(pdf_path)
 
-    paragraph_titles = [ paragraph.text_raw for paragraph in tdp_structure.paragraphs ]
+    paragraph_titles = [ paragraph.title_raw for paragraph in tdp_structure.paragraphs ]
 
     filename = os.path.basename(pdf_path)
 
@@ -47,7 +47,7 @@ def process(pdf_path:str):
         print(f"Missing test for {filename}")
 
     for paragraph in tdp_structure.paragraphs:
-        print(f"{paragraph.sequence_id:3}: {paragraph.text_raw:40}, {embeddor.count_tokens(paragraph.content_raw()):5} tokens")
+        print(f"{paragraph.sequence_id:3}: {paragraph.title_raw:40}, {embeddor.count_tokens(paragraph.content_raw()):5} tokens")
         # print(paragraph.content_raw(), "\n\n")
 
 
