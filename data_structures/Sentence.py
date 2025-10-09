@@ -6,10 +6,9 @@ from .TDPName import TDPName
 class Sentence:
 	""" Class that represents a sentence in the database """
 	def __init__(
-     	self, id:int=None, tdp_name:TDPName=None, paragraph_id:int=None, sequence_id:int=None,
+     	self, tdp_name:TDPName=None, paragraph_id:int=None, sequence_id:int=None,
       	text_raw:str=None, text_processed:str=None, embedding:np.ndarray=None
 	) -> None:
-		self.id = id
 		self.tdp_name = tdp_name
 		self.paragraph_id = paragraph_id
 		self.sequence_id = sequence_id
@@ -30,25 +29,26 @@ class Sentence:
 	""" Convert sentence to dict """
 	def to_dict(self) -> dict:
 		return {
-			"id": self.id,
-			"tdp_name": self.tdp_name,
+			"tdp_name": self.tdp_name.to_dict(),
 			"paragraph_id": self.paragraph_id,
    			"sequence_id": self.sequence_id,
-			"text_raw": self.text_raw,
-			"text_processed": self.text_processed,
+			"raw": self.text_raw,
+			"processed": self.text_processed,
 			"embedding": self.embedding
 		}
 
 	""" Special case of dict that can be converted to json, by removing the np.array embedding """
 	def to_json_dict(self) -> str:
-		dict_ = self.to_dict()
-		dict_.pop("embedding")
-		return dict_
+		return {
+			"sequence_id": self.sequence_id,
+			"paragraph_id": self.paragraph_id,
+			"raw": self.text_raw,
+			"processed": self.text_processed
+		}
  
 	@staticmethod
 	def from_dict(sentence:dict) -> Sentence:
 		return Sentence(
-			id=sentence["id"],
 			tdp_name=sentence["tdp_name"],
 			paragraph_id=sentence["paragraph_id"],
 			sequence_id=sentence["sequence_id"],

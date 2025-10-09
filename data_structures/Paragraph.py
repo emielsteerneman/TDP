@@ -54,10 +54,12 @@ class Paragraph:
 	def to_dict(self) -> dict:
 		return {
 			"sequence_id": self.sequence_id,
-			"title_raw": self.title_raw,
-			"title_processed": self.title_processed,
-			"content_raw": [sentence.text_raw for sentence in self.sentences],
-			"content_processed": [sentence.text_processed for sentence in self.sentences],
+			# "title_raw": self.title_raw,
+			# "title_processed": self.title_processed,
+			"title": Sentence(sequence_id=0, paragraph_id=self.sequence_id, text_raw = self.title_raw, text_processed=self.title_processed).to_json_dict(),
+			"sentences": [ sentence.to_json_dict() for sentence in self.sentences ],
+			# "content_raw": [sentence.text_raw for sentence in self.sentences],
+			# "content_processed": [sentence.text_processed for sentence in self.sentences],
 			"embedding": self.embedding
 		}
 
