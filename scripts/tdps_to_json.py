@@ -103,7 +103,10 @@ n_questions_generic_stored = 0
 # metadata_client.drop_tdps()
 # metadata_client.drop_paragraphs()
 
-for i_pdf, tdp_name in enumerate(pdfs[:5]):
+output_dir = "../tdps_json/"
+os.makedirs(output_dir, exist_ok=True)
+
+for i_pdf, tdp_name in enumerate(pdfs):
     try:
         ### Load
         if tdp_name.filename in blacklist: continue
@@ -131,6 +134,13 @@ for i_pdf, tdp_name in enumerate(pdfs[:5]):
         # print(tdp.structure.to_dict())
         print( json.dumps( tdp.structure.to_dict() ) )
         
+        ### Store TDP as JSON
+        profiler.start("store tdp json")
+        output_filepath = os.path.join(output_dir, f"{tdp_name.filename}.json")
+        with open(output_filepath, "w", encoding="utf-8") as f:
+            json.dump( tdp.structure.to_dict(), f, ensure_ascii=False, indent=4 )
+        profiler.stop()
+
 
     except Exception as e:
         n_exceptions += 1
